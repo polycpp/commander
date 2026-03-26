@@ -54,4 +54,16 @@ if(POLYCPP_COMMANDER_BUILD_TESTS)
     add_executable(test_suggest_similar tests/test_suggest_similar.cpp)
     target_link_libraries(test_suggest_similar PRIVATE polycpp_commander GTest::gtest_main)
     gtest_discover_tests(test_suggest_similar)
+
+    add_executable(test_help tests/test_help.cpp)
+    target_link_libraries(test_help PRIVATE polycpp_commander GTest::gtest_main)
+    gtest_discover_tests(test_help)
+
+    add_executable(test_command tests/test_command.cpp)
+    target_link_libraries(test_command PRIVATE polycpp_commander GTest::gtest_main)
+    gtest_discover_tests(test_command)
+
+    add_executable(test_integration tests/test_integration.cpp)
+    target_link_libraries(test_integration PRIVATE polycpp_commander GTest::gtest_main)
+    gtest_discover_tests(test_integration)
 endif()

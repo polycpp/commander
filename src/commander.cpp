@@ -1,12 +1,15 @@
 #include <polycpp/commander/detail/aggregator.hpp>
 
 // Compiled translation unit for polycpp_commander.
-// Implementations that require a single TU go here.
+// The program() singleton must be in a single TU to avoid ODR issues.
 
 namespace polycpp {
 namespace commander {
 
-// (Will be populated in later plans)
+Command& program() {
+    static Command instance;
+    return instance;
+}
 
 } // namespace commander
 } // namespace polycpp

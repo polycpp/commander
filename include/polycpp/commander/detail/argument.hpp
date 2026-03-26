@@ -52,19 +52,18 @@ inline Argument& Argument::argParser(ParseFn fn) {
 
 inline Argument& Argument::choices(const std::vector<std::string>& values) {
     argChoices_ = values;
-    parseArg_ = [this](const std::string& arg, const std::any& previous) -> std::any {
-        if (argChoices_) {
-            const auto& choices = *argChoices_;
-            if (std::find(choices.begin(), choices.end(), arg) == choices.end()) {
-                std::string allowed;
-                for (size_t i = 0; i < choices.size(); ++i) {
-                    if (i > 0) allowed += ", ";
-                    allowed += choices[i];
-                }
-                throw InvalidArgumentError("Allowed choices are " + allowed + ".");
+    auto choicesCopy = values;
+    bool isVariadic = variadic;
+    parseArg_ = [choicesCopy, isVariadic](const std::string& arg, const std::any& previous) -> std::any {
+        if (std::find(choicesCopy.begin(), choicesCopy.end(), arg) == choicesCopy.end()) {
+            std::string allowed;
+            for (size_t i = 0; i < choicesCopy.size(); ++i) {
+                if (i > 0) allowed += ", ";
+                allowed += choicesCopy[i];
             }
+            throw InvalidArgumentError("Allowed choices are " + allowed + ".");
         }
-        if (variadic) {
+        if (isVariadic) {
             // Collect into vector
             if (!previous.has_value()) {
                 return std::any(std::vector<std::string>{arg});
