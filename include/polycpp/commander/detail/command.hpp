@@ -14,10 +14,15 @@
 #include <polycpp/commander/suggest_similar.hpp>
 
 #include <algorithm>
+#include <cstdlib>
+#include <filesystem>
 #include <iostream>
 #include <regex>
 #include <sstream>
 #include <stdexcept>
+
+#include <sys/wait.h>
+#include <unistd.h>
 
 namespace polycpp {
 namespace commander {
@@ -408,6 +413,47 @@ inline Command& Command::addCommand(std::unique_ptr<Command> cmd, const CommandO
 
 inline std::unique_ptr<Command> Command::createCommand(const std::string& name) const {
     return std::make_unique<Command>(name);
+}
+
+// ---- Executable Subcommands ----
+
+inline Command& Command::executableCommand(const std::string& nameAndArgs,
+                                            const std::string& description,
+                                            const std::string& executableFile) {
+    // Parse "name <required> [optional]"
+    std::regex re("^([^ ]+)\\s*(.*)$");
+    std::smatch match;
+    std::string cmdName, argsDef;
+    if (std::regex_match(nameAndArgs, match, re)) {
+        cmdName = match[1].str();
+        argsDef = match[2].str();
+    } else {
+        cmdName = nameAndArgs;
+    }
+
+    auto cmd = createCommand(cmdName);
+    cmd->description(description);
+    cmd->executableHandler_ = true;
+    if (!executableFile.empty()) {
+        cmd->executableFile_ = executableFile;
+    }
+    if (!argsDef.empty()) cmd->arguments(argsDef);
+
+    registerCommand_(*cmd);
+    cmd->parent = this;
+    cmd->copyInheritedSettings(*this);
+
+    commands.push_back(std::move(cmd));
+    return *this; // Return parent, not subcommand
+}
+
+inline Command& Command::executableDir(const std::string& path) {
+    executableDir_ = path;
+    return *this;
+}
+
+inline std::string Command::executableDir() const {
+    return executableDir_.value_or("");
 }
 
 // ---- Action ----
@@ -1272,7 +1318,135 @@ inline void Command::dispatchSubcommand_(const std::string& commandName,
 
     subCommand->prepareForParse_();
     callSubCommandHook_(*subCommand, "preSubcommand");
-    subCommand->parseCommand_(operands, unknown);
+
+    if (subCommand->executableHandler_) {
+        executeSubCommand_(*subCommand, operands, unknown);
+    } else {
+        subCommand->parseCommand_(operands, unknown);
+    }
+}
+
+inline void Command::executeSubCommand_(Command& subCommand,
+                                         const std::vector<std::string>& operands,
+                                         const std::vector<std::string>& unknown) {
+    // Check mandatory options and conflicts on the parent before launching
+    checkForMissingMandatoryOptions_();
+    checkForConflictingOptions_();
+
+    // Determine executable name
+    std::string execName = subCommand.executableFile_.value_or(
+        name_ + "-" + subCommand.name());
+
+    // Determine search directory
+    std::string searchDir;
+    if (executableDir_.has_value()) {
+        searchDir = *executableDir_;
+    }
+
+    // If we have a scriptPath_, resolve relative to its directory
+    if (!scriptPath_.empty()) {
+        namespace fs = std::filesystem;
+        std::string resolvedScript;
+        try {
+            resolvedScript = fs::canonical(scriptPath_).string();
+        } catch (...) {
+            resolvedScript = scriptPath_;
+        }
+        std::string scriptDir = fs::path(resolvedScript).parent_path().string();
+        if (!searchDir.empty()) {
+            searchDir = (fs::path(scriptDir) / searchDir).string();
+        } else {
+            searchDir = scriptDir;
+        }
+    }
+
+    // Look for a local file in the search directory first
+    std::string resolvedPath;
+    if (!searchDir.empty()) {
+        namespace fs = std::filesystem;
+        auto candidate = fs::path(searchDir) / execName;
+        if (fs::exists(candidate)) {
+            resolvedPath = candidate.string();
+        }
+    }
+
+    // If not found locally, search PATH
+    if (resolvedPath.empty()) {
+        resolvedPath = findProgram_(execName);
+    }
+
+    if (resolvedPath.empty()) {
+        std::string msg = "'" + execName + "' does not exist\n"
+            " - if '" + subCommand.name() + "' is not meant to be an executable command, remove description parameter from '.executableCommand()' and use '.command()' instead\n"
+            " - if the default executable name is not suitable, use the executableFile parameter to supply a custom name or path";
+        error(msg, {.exitCode = 1, .code = "commander.executeSubCommandAsync"});
+        return;
+    }
+
+    // Build args: operands + unknown
+    std::vector<std::string> launchArgs;
+    launchArgs.insert(launchArgs.end(), operands.begin(), operands.end());
+    launchArgs.insert(launchArgs.end(), unknown.begin(), unknown.end());
+
+    // Fork + exec
+    pid_t pid = fork();
+    if (pid == 0) {
+        // Child process
+        std::vector<const char*> cargs;
+        cargs.push_back(resolvedPath.c_str());
+        for (const auto& a : launchArgs) {
+            cargs.push_back(a.c_str());
+        }
+        cargs.push_back(nullptr);
+        execvp(resolvedPath.c_str(), const_cast<char* const*>(cargs.data()));
+        // If execvp returns, it failed
+        perror("execvp");
+        _exit(127);
+    } else if (pid > 0) {
+        // Parent: wait for child
+        int status = 0;
+        waitpid(pid, &status, 0);
+        if (WIFEXITED(status)) {
+            int code = WEXITSTATUS(status);
+            if (code != 0) {
+                exit_(code, "commander.executeSubCommandAsync", "(close)");
+            }
+        } else if (WIFSIGNALED(status)) {
+            // Child killed by signal
+            exit_(1, "commander.executeSubCommandAsync", "(close)");
+        }
+    } else {
+        // Fork failed
+        error("failed to fork subprocess", {.exitCode = 1, .code = "commander.executeSubCommandAsync"});
+    }
+}
+
+inline std::string Command::findProgram_(const std::string& name) const {
+    namespace fs = std::filesystem;
+
+    // If the name contains a path separator, treat as a path
+    if (name.find('/') != std::string::npos) {
+        if (access(name.c_str(), X_OK) == 0) {
+            return name;
+        }
+        return "";
+    }
+
+    // Search PATH
+    const char* pathEnv = std::getenv("PATH");
+    if (!pathEnv) return "";
+
+    std::string pathStr(pathEnv);
+    std::istringstream stream(pathStr);
+    std::string dir;
+    while (std::getline(stream, dir, ':')) {
+        if (dir.empty()) continue;
+        auto candidate = fs::path(dir) / name;
+        if (access(candidate.c_str(), X_OK) == 0) {
+            return candidate.string();
+        }
+    }
+    return "";
 }
 
 inline void Command::dispatchHelpCommand_(const std::string& subcommandName) {
@@ -1281,11 +1455,11 @@ inline void Command::dispatchHelpCommand_(const std::string& subcommandName) {
         return;
     }
     Command* subCommand = findCommand_(subcommandName);
-    if (subCommand) {
+    if (subCommand && !subCommand->executableHandler_) {
         subCommand->help();
         return;
     }
-    // Fallback: dispatch with help flag
+    // Fallback: dispatch with help flag (also used for executable subcommands)
     auto* helpOpt = getHelpOption_();
     std::string helpFlag = helpOpt && helpOpt->long_.has_value() ? *helpOpt->long_ : "--help";
     dispatchSubcommand_(subcommandName, {}, {helpFlag});
