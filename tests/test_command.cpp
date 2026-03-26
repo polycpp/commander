@@ -1,4 +1,5 @@
 #include <polycpp/commander/detail/aggregator.hpp>
+#include <polycpp/event_loop.hpp>
 #include <gtest/gtest.h>
 
 #include <filesystem>
@@ -1011,4 +1012,168 @@ TEST(CommandTest, ExecutableSubcommandWithArguments) {
     EXPECT_EQ(cmd.commands.size(), 1u);
     EXPECT_EQ(cmd.commands[0]->name(), "install");
     EXPECT_EQ(cmd.commands[0]->registeredArguments.size(), 1u);
+}
+
+// ---- parseAsync tests ----
+
+TEST(CommandTest, ParseAsyncBasicAction) {
+    Command cmd("app");
+    cmd.exitOverride();
+    bool called = false;
+    cmd.option("-v, --verbose", "verbose");
+    cmd.actionAsync([&](const std::vector<polycpp::JsonValue>& args,
+                         const polycpp::JsonValue& opts, Command&) {
+        called = true;
+        EXPECT_TRUE(opts["verbose"].asBool());
+        return polycpp::Promise<void>::resolve();
+    });
+
+    auto promise = cmd.parseAsync({"--verbose"}, {.from = "user"});
+    polycpp::EventLoop::instance().run();
+    EXPECT_TRUE(called);
+}
+
+TEST(CommandTest, ParseAsyncSyncAction) {
+    Command cmd("app");
+    cmd.exitOverride();
+    bool called = false;
+    cmd.action([&](const std::vector<polycpp::JsonValue>& args,
+                    const polycpp::JsonValue& opts, Command&) {
+        called = true;
+    });
+
+    auto promise = cmd.parseAsync({}, {.from = "user"});
+    polycpp::EventLoop::instance().run();
+    EXPECT_TRUE(called);
+}
+
+TEST(CommandTest, ParseAsyncHookOrder) {
+    Command cmd("app");
+    cmd.exitOverride();
+    std::vector<std::string> order;
+
+    cmd.hook("preAction", [&](Command&, Command&) {
+        order.push_back("syncPre");
+    });
+    cmd.hookAsync("preAction", [&](Command&, Command&) {
+        order.push_back("asyncPre");
+        return polycpp::Promise<void>::resolve();
+    });
+    cmd.action([&](const std::vector<polycpp::JsonValue>&,
+                    const polycpp::JsonValue&, Command&) {
+        order.push_back("action");
+    });
+    cmd.hook("postAction", [&](Command&, Command&) {
+        order.push_back("syncPost");
+    });
+    cmd.hookAsync("postAction", [&](Command&, Command&) {
+        order.push_back("asyncPost");
+        return polycpp::Promise<void>::resolve();
+    });
+
+    cmd.parseAsync({}, {.from = "user"});
+    polycpp::EventLoop::instance().run();
+
+    ASSERT_EQ(order.size(), 5u);
+    EXPECT_EQ(order[0], "syncPre");
+    EXPECT_EQ(order[1], "asyncPre");
+    EXPECT_EQ(order[2], "action");
+    // postAction hooks run in reverse registration order
+    EXPECT_EQ(order[3], "asyncPost");
+    EXPECT_EQ(order[4], "syncPost");
+}
+
+TEST(CommandTest, ParseAsyncWithArgs) {
+    Command cmd("app");
+    cmd.exitOverride();
+    std::string capturedFile;
+    cmd.argument("<file>", "input file");
+    cmd.actionAsync([&](const std::vector<polycpp::JsonValue>& args,
+                         const polycpp::JsonValue& opts, Command&) {
+        capturedFile = args[0].asString();
+        return polycpp::Promise<void>::resolve();
+    });
+
+    cmd.parseAsync({"test.txt"}, {.from = "user"});
+    polycpp::EventLoop::instance().run();
+    EXPECT_EQ(capturedFile, "test.txt");
+}
+
+TEST(CommandTest, ParseAsyncSubcommand) {
+    Command cmd("app");
+    cmd.exitOverride();
+    bool called = false;
+    cmd.command("serve")
+        .actionAsync([&](const std::vector<polycpp::JsonValue>&,
+                          const polycpp::JsonValue&, Command&) {
+            called = true;
+            return polycpp::Promise<void>::resolve();
+        });
+
+    cmd.parseAsync({"serve"}, {.from = "user"});
+    polycpp::EventLoop::instance().run();
+    EXPECT_TRUE(called);
+}
+
+TEST(CommandTest, ParseAsyncReturnsCommand) {
+    Command cmd("app");
+    cmd.exitOverride();
+    cmd.option("-n, --name <name>", "name");
+    cmd.actionAsync([](const std::vector<polycpp::JsonValue>&,
+                        const polycpp::JsonValue&, Command&) {
+        return polycpp::Promise<void>::resolve();
+    });
+
+    Command* resultCmd = nullptr;
+    cmd.parseAsync({"--name", "Alice"}, {.from = "user"})
+        .then([&](std::reference_wrapper<Command> ref) {
+            resultCmd = &ref.get();
+        });
+    polycpp::EventLoop::instance().run();
+
+    ASSERT_NE(resultCmd, nullptr);
+    EXPECT_EQ(resultCmd->opts()["name"].asString(), "Alice");
+}
+
+TEST(CommandTest, SyncParseStillWorksAfterAsyncAdded) {
+    Command cmd("app");
+    cmd.exitOverride();
+    bool called = false;
+    cmd.action([&](const std::vector<polycpp::JsonValue>&,
+                    const polycpp::JsonValue&, Command&) { called = true; });
+    cmd.parse({}, {.from = "user"});
+    EXPECT_TRUE(called);
+}
+
+TEST(CommandTest, ParseAsyncAsyncActionHandler) {
+    Command cmd("app");
+    cmd.exitOverride();
+    std::string result;
+    cmd.actionAsync([&](const std::vector<polycpp::JsonValue>&,
+                         const polycpp::JsonValue&, Command&) {
+        return polycpp::Promise<void>([&](auto resolve, auto) {
+            result = "async_done";
+            resolve();
+        });
+    });
+
+    cmd.parseAsync({}, {.from = "user"});
+    polycpp::EventLoop::instance().run();
+    EXPECT_EQ(result, "async_done");
+}
+
+TEST(CommandTest, HookAsyncValidation) {
+    Command cmd("app");
+    EXPECT_THROW(cmd.hookAsync("invalid", [](Command&, Command&) {
+        return polycpp::Promise<void>::resolve();
+    }), std::runtime_error);
+}
+
+TEST(CommandTest, ActionAsyncReturnsThis) {
+    Command cmd("app");
+    auto& ref = cmd.actionAsync([](const std::vector<polycpp::JsonValue>&,
+                                    const polycpp::JsonValue&, Command&) {
+        return polycpp::Promise<void>::resolve();
+    });
+    EXPECT_EQ(&ref, &cmd);
 }

@@ -1694,5 +1694,208 @@ inline void Command::restoreStateBeforeParse_() {
     processedArgs.clear();
 }
 
+// ---- Async API ----
+
+inline Command& Command::actionAsync(AsyncActionFn fn) {
+    asyncActionHandler_ = [this, fn = std::move(fn)](const std::vector<polycpp::JsonValue>& processedArgs)
+        -> polycpp::Promise<void> {
+        auto optsMap = opts();
+        return fn(processedArgs, optsMap, *this);
+    };
+    return *this;
+}
+
+inline Command& Command::hookAsync(const std::string& event, AsyncHookFn listener) {
+    std::vector<std::string> allowed = {"preSubcommand", "preAction", "postAction"};
+    if (std::find(allowed.begin(), allowed.end(), event) == allowed.end()) {
+        throw std::runtime_error(
+            "Unexpected value for event passed to hookAsync : '" + event +
+            "'.\nExpecting one of 'preSubcommand', 'preAction', 'postAction'");
+    }
+    asyncLifeCycleHooks_[event].push_back(std::move(listener));
+    return *this;
+}
+
+inline polycpp::Promise<std::reference_wrapper<Command>>
+Command::parseAsync(const std::vector<std::string>& argv, const ParseOptions& parseOpts) {
+    prepareForParse_();
+    auto userArgs = prepareUserArgs_(argv, parseOpts);
+
+    return parseCommandAsync_({}, userArgs)
+        .then([this]() -> std::reference_wrapper<Command> {
+            return std::ref(*this);
+        });
+}
+
+inline polycpp::Promise<void>
+Command::parseCommandAsync_(const std::vector<std::string>& initialOperands,
+                              const std::vector<std::string>& unknown) {
+    // Option parsing is always synchronous
+    auto parsed = parseOptions(unknown);
+    parseOptionsEnv_();
+    parseOptionsImplied_();
+
+    std::vector<std::string> operands = initialOperands;
+    operands.insert(operands.end(), parsed.operands.begin(), parsed.operands.end());
+    auto unknownArgs = parsed.unknown;
+    args = operands;
+    args.insert(args.end(), unknownArgs.begin(), unknownArgs.end());
+
+    // Subcommand dispatch
+    if (!operands.empty() && findCommand_(operands[0])) {
+        std::vector<std::string> subOperands(operands.begin() + 1, operands.end());
+        return dispatchSubcommandAsync_(operands[0], subOperands, unknownArgs);
+    }
+
+    // Help command dispatch
+    if (getHelpCommand_() && !operands.empty() && operands[0] == getHelpCommand_()->name()) {
+        std::string subName = operands.size() > 1 ? operands[1] : "";
+        dispatchHelpCommand_(subName);
+        return polycpp::Promise<void>::resolve();
+    }
+
+    // Default command
+    if (!defaultCommandName_.empty()) {
+        outputHelpIfRequested_(unknownArgs);
+        return dispatchSubcommandAsync_(defaultCommandName_, operands, unknownArgs);
+    }
+
+    // No subcommands matched, no action, and has subcommands: show help
+    if (!commands.empty() && args.empty() && !actionHandler_ && !asyncActionHandler_ &&
+        defaultCommandName_.empty()) {
+        help({.error = true});
+        return polycpp::Promise<void>::resolve();
+    }
+
+    outputHelpIfRequested_(parsed.unknown);
+    checkForMissingMandatoryOptions_();
+    checkForConflictingOptions_();
+
+    auto checkForUnknownOptions = [&]() {
+        if (!parsed.unknown.empty()) {
+            unknownOption(parsed.unknown[0]);
+        }
+    };
+
+    if (actionHandler_ || asyncActionHandler_) {
+        checkForUnknownOptions();
+        processArguments_();
+
+        // Chain: preAction hooks → action → postAction hooks
+        return callHooksAsync_("preAction")
+            .then([this]() -> polycpp::Promise<void> {
+                if (asyncActionHandler_) {
+                    return asyncActionHandler_(processedArgs);
+                } else if (actionHandler_) {
+                    actionHandler_(processedArgs);
+                    return polycpp::Promise<void>::resolve();
+                }
+                return polycpp::Promise<void>::resolve();
+            })
+            .then([this]() -> polycpp::Promise<void> {
+                return callHooksAsync_("postAction");
+            });
+    }
+
+    // No action handler
+    if (!operands.empty()) {
+        if (findCommand_("*")) {
+            std::vector<std::string> subOperands(operands.begin(), operands.end());
+            return dispatchSubcommandAsync_("*", subOperands, unknownArgs);
+        }
+        if (!commands.empty()) {
+            unknownCommand();
+            return polycpp::Promise<void>::resolve();
+        }
+        checkForUnknownOptions();
+        processArguments_();
+    } else if (!commands.empty()) {
+        checkForUnknownOptions();
+        help({.error = true});
+    } else {
+        checkForUnknownOptions();
+        processArguments_();
+    }
+
+    return polycpp::Promise<void>::resolve();
+}
+
+inline polycpp::Promise<void>
+Command::dispatchSubcommandAsync_(const std::string& commandName,
+                                    const std::vector<std::string>& operands,
+                                    const std::vector<std::string>& unknown) {
+    Command* subCommand = findCommand_(commandName);
+    if (!subCommand) {
+        help({.error = true});
+        return polycpp::Promise<void>::resolve();
+    }
+
+    subCommand->prepareForParse_();
+    callSubCommandHook_(*subCommand, "preSubcommand");
+
+    if (subCommand->executableHandler_) {
+        executeSubCommand_(*subCommand, operands, unknown);
+        return polycpp::Promise<void>::resolve();
+    }
+
+    return subCommand->parseCommandAsync_(operands, unknown);
+}
+
+inline polycpp::Promise<void>
+Command::callHooksAsync_(const std::string& event) {
+    auto ancestors = getCommandAndAncestors_();
+
+    // Collect all hooks (sync + async) from ancestors
+    struct HookEntry {
+        Command* command;
+        bool isAsync;
+        size_t syncIdx;
+        size_t asyncIdx;
+    };
+    std::vector<HookEntry> hooks;
+
+    for (auto it = ancestors.rbegin(); it != ancestors.rend(); ++it) {
+        auto* cmd = const_cast<Command*>(*it);
+        auto syncIt = cmd->lifeCycleHooks_.find(event);
+        if (syncIt != cmd->lifeCycleHooks_.end()) {
+            for (size_t i = 0; i < syncIt->second.size(); ++i) {
+                hooks.push_back({cmd, false, i, 0});
+            }
+        }
+        auto asyncIt = cmd->asyncLifeCycleHooks_.find(event);
+        if (asyncIt != cmd->asyncLifeCycleHooks_.end()) {
+            for (size_t i = 0; i < asyncIt->second.size(); ++i) {
+                hooks.push_back({cmd, true, 0, i});
+            }
+        }
+    }
+
+    if (event == "postAction") {
+        std::reverse(hooks.begin(), hooks.end());
+    }
+
+    // Chain all hooks sequentially
+    polycpp::Promise<void> chain = polycpp::Promise<void>::resolve();
+
+    for (const auto& entry : hooks) {
+        Command* hookedCommand = entry.command;
+        Command* actionCommand = this;
+
+        if (entry.isAsync) {
+            auto& hookFn = hookedCommand->asyncLifeCycleHooks_[event][entry.asyncIdx];
+            chain = chain.then([hookedCommand, actionCommand, &hookFn]() -> polycpp::Promise<void> {
+                return hookFn(*hookedCommand, *actionCommand);
+            });
+        } else {
+            auto& hookFn = hookedCommand->lifeCycleHooks_[event][entry.syncIdx];
+            chain = chain.then([hookedCommand, actionCommand, &hookFn]() {
+                hookFn(*hookedCommand, *actionCommand);
+            });
+        }
+    }
+
+    return chain;
+}
+
 } // namespace commander
 } // namespace polycpp

@@ -13,6 +13,7 @@
 #include <polycpp/commander/option.hpp>
 
 #include <polycpp/events/detail/aggregator.hpp>
+#include <polycpp/core/promise.hpp>
 
 #include <functional>
 #include <map>
@@ -93,6 +94,19 @@ using ActionFn = std::function<void(const std::vector<polycpp::JsonValue>& args,
 /// @brief Type alias for hook functions.
 /// @since 0.1.0
 using HookFn = std::function<void(Command& thisCommand, Command& actionCommand)>;
+
+/// @brief Type alias for async action handler functions.
+///
+/// Like ActionFn but returns a Promise<void> for async operations.
+/// @since 0.2.0
+using AsyncActionFn = std::function<polycpp::Promise<void>(
+    const std::vector<polycpp::JsonValue>& args,
+    const polycpp::JsonValue& opts,
+    Command& cmd)>;
+
+/// @brief Type alias for async hook functions.
+/// @since 0.2.0
+using AsyncHookFn = std::function<polycpp::Promise<void>(Command& thisCommand, Command& actionCommand)>;
 
 /**
  * @brief The main Command class — CLI command with options, arguments, and subcommands.
@@ -548,6 +562,25 @@ public:
      */
     Command& action(ActionFn fn);
 
+    /**
+     * @brief Register an async action handler for this command.
+     *
+     * The handler receives (processedArgs, opts, command) and returns
+     * a Promise<void> that resolves when the async work completes.
+     *
+     * @param fn The async action function.
+     * @return Reference to this command for chaining.
+     * @par Example
+     * @code{.cpp}
+     *   program.actionAsync([](auto& args, auto& opts, auto& cmd) {
+     *       return polycpp::Promise<void>::resolve();
+     *   });
+     * @endcode
+     * @see https://github.com/tj/commander.js#action-handler-subcommands
+     * @since 0.2.0
+     */
+    Command& actionAsync(AsyncActionFn fn);
+
     // --- Parsing ---
 
     /**
@@ -576,6 +609,28 @@ public:
      * @since 0.1.0
      */
     Command& parse();
+
+    /**
+     * @brief Parse arguments asynchronously.
+     *
+     * Like parse(), but returns a Promise that resolves after all async
+     * action handlers and hooks complete. Supports both sync and async
+     * handlers — sync handlers are wrapped in immediately-resolving promises.
+     *
+     * @param argv The argument vector.
+     * @param parseOpts Parsing options (default: from="node").
+     * @return Promise resolving to a reference to this command.
+     * @par Example
+     * @code{.cpp}
+     *   auto promise = program.parseAsync({"app", "--verbose"}, {.from = "user"});
+     *   polycpp::EventLoop::instance().run();
+     * @endcode
+     * @see https://github.com/tj/commander.js#parse-and-parseasync
+     * @since 0.2.0
+     */
+    polycpp::Promise<std::reference_wrapper<Command>> parseAsync(
+        const std::vector<std::string>& argv,
+        const ParseOptions& parseOpts = {});
 
     /**
      * @brief Parse options from argv, removing known options.
@@ -876,6 +931,16 @@ public:
      */
     Command& hook(const std::string& event, HookFn listener);
 
+    /**
+     * @brief Add an async hook for a lifecycle event.
+     * @param event "preSubcommand", "preAction", or "postAction".
+     * @param listener Async hook function returning Promise<void>.
+     * @return Reference to this command for chaining.
+     * @see https://github.com/tj/commander.js#life-cycle-hooks
+     * @since 0.2.0
+     */
+    Command& hookAsync(const std::string& event, AsyncHookFn listener);
+
     // --- Settings ---
 
     /**
@@ -1051,6 +1116,13 @@ private:
     void saveStateBeforeParse_();
     void restoreStateBeforeParse_();
 
+    polycpp::Promise<void> parseCommandAsync_(const std::vector<std::string>& operands,
+                                               const std::vector<std::string>& unknown);
+    polycpp::Promise<void> dispatchSubcommandAsync_(const std::string& commandName,
+                                                     const std::vector<std::string>& operands,
+                                                     const std::vector<std::string>& unknown);
+    polycpp::Promise<void> callHooksAsync_(const std::string& event);
+
     // --- Private fields ---
 
     std::string name_;
@@ -1082,9 +1154,12 @@ private:
 
     /// Internal action handler takes just processedArgs; action() wraps the user's ActionFn.
     std::function<void(const std::vector<polycpp::JsonValue>&)> actionHandler_;
+    /// Internal async action handler; set by actionAsync().
+    std::function<polycpp::Promise<void>(const std::vector<polycpp::JsonValue>&)> asyncActionHandler_;
     std::function<void(const CommanderError&)> exitCallback_;
 
     std::unordered_map<std::string, std::vector<HookFn>> lifeCycleHooks_;
+    std::unordered_map<std::string, std::vector<AsyncHookFn>> asyncLifeCycleHooks_;
 
     OutputConfiguration outputConfiguration_;
 
