@@ -39,6 +39,12 @@ inline Command::Command(const std::string& name)
     };
     outputConfiguration_.getOutHelpWidth = []() -> int { return 80; };
     outputConfiguration_.getErrHelpWidth = []() -> int { return 80; };
+    outputConfiguration_.getOutHasColors = []() -> bool {
+        return detail::isStdoutTTY() && detail::envAllowsColors();
+    };
+    outputConfiguration_.getErrHasColors = []() -> bool {
+        return detail::isStderrTTY() && detail::envAllowsColors();
+    };
 }
 
 // ---- Metadata getters/setters ----
@@ -677,11 +683,22 @@ inline void Command::outputHelp(const HelpContext& context) {
 
 inline std::string Command::helpInformation(const HelpContext& context) const {
     Help helper = createHelp();
-    int helpWidth = context.error
+    int hw = context.error
         ? outputConfiguration_.getErrHelpWidth()
         : outputConfiguration_.getOutHelpWidth();
-    helper.prepareContext(helpWidth);
-    return helper.formatHelp(*this, helper);
+    bool hasColors = false;
+    if (context.error && outputConfiguration_.getErrHasColors) {
+        hasColors = outputConfiguration_.getErrHasColors();
+    } else if (!context.error && outputConfiguration_.getOutHasColors) {
+        hasColors = outputConfiguration_.getOutHasColors();
+    }
+    helper.prepareContext({.helpWidth = hw, .outputHasColors = hasColors});
+    std::string text = helper.formatHelp(*this, helper);
+    // Strip color if output does not support it (safety net).
+    if (!hasColors) {
+        text = stripColor(text);
+    }
+    return text;
 }
 
 inline void Command::help(const HelpContext& context) {
@@ -722,6 +739,8 @@ inline Command& Command::configureOutput(const OutputConfiguration& config) {
     if (config.outputError) outputConfiguration_.outputError = config.outputError;
     if (config.getOutHelpWidth) outputConfiguration_.getOutHelpWidth = config.getOutHelpWidth;
     if (config.getErrHelpWidth) outputConfiguration_.getErrHelpWidth = config.getErrHelpWidth;
+    if (config.getOutHasColors) outputConfiguration_.getOutHasColors = config.getOutHasColors;
+    if (config.getErrHasColors) outputConfiguration_.getErrHasColors = config.getErrHasColors;
     return *this;
 }
 

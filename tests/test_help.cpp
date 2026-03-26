@@ -257,3 +257,176 @@ TEST(HelpTest, CommandUsageWithAlias) {
     auto usage = help.commandUsage(cmd);
     EXPECT_NE(usage.find("serve|s"), std::string::npos);
 }
+
+// ============ Style Methods (no color) ============
+
+TEST(HelpTest, StyleMethodsNoColor) {
+    Help help;
+    help.outputHasColors = false;
+    EXPECT_EQ(help.styleTitle("Options:"), "Options:");
+    EXPECT_EQ(help.styleUsage("myapp [options]"), "myapp [options]");
+    EXPECT_EQ(help.styleOptionTerm("-v"), "-v");
+    EXPECT_EQ(help.styleSubcommandTerm("serve"), "serve");
+    EXPECT_EQ(help.styleArgumentTerm("<file>"), "<file>");
+    EXPECT_EQ(help.styleDescriptionText("desc"), "desc");
+    EXPECT_EQ(help.styleCommandDescription("desc"), "desc");
+    EXPECT_EQ(help.styleOptionDescription("desc"), "desc");
+    EXPECT_EQ(help.styleSubcommandDescription("desc"), "desc");
+    EXPECT_EQ(help.styleArgumentDescription("desc"), "desc");
+}
+
+// ============ Style Methods (with color) ============
+
+TEST(HelpTest, StyleMethodsWithColor) {
+    Help help;
+    help.outputHasColors = true;
+
+    // Title should be bold
+    auto title = help.styleTitle("Options:");
+    EXPECT_NE(title, "Options:");
+    EXPECT_NE(title.find("\033[1m"), std::string::npos);
+    EXPECT_NE(title.find("\033[0m"), std::string::npos);
+
+    // Usage should be bold
+    auto usage = help.styleUsage("myapp [options]");
+    EXPECT_NE(usage, "myapp [options]");
+    EXPECT_NE(usage.find("\033[1m"), std::string::npos);
+
+    // Option term should be yellow
+    auto optTerm = help.styleOptionTerm("-v, --verbose");
+    EXPECT_NE(optTerm, "-v, --verbose");
+    EXPECT_NE(optTerm.find("\033[33m"), std::string::npos);
+
+    // Subcommand term should be yellow
+    auto subTerm = help.styleSubcommandTerm("serve");
+    EXPECT_NE(subTerm.find("\033[33m"), std::string::npos);
+
+    // Argument term should be yellow
+    auto argTerm = help.styleArgumentTerm("<file>");
+    EXPECT_NE(argTerm.find("\033[33m"), std::string::npos);
+
+    // Description should be dim
+    auto desc = help.styleDescriptionText("some description");
+    EXPECT_NE(desc, "some description");
+    EXPECT_NE(desc.find("\033[2m"), std::string::npos);
+}
+
+TEST(HelpTest, StyleMethodsEmptyString) {
+    Help help;
+    help.outputHasColors = true;
+    // Empty strings should remain empty even with colors enabled
+    EXPECT_EQ(help.styleTitle(""), "");
+    EXPECT_EQ(help.styleOptionTerm(""), "");
+    EXPECT_EQ(help.styleDescriptionText(""), "");
+}
+
+// ============ DisplayWidth with ANSI ============
+
+TEST(HelpTest, DisplayWidthIgnoresAnsiCodes) {
+    Help help;
+    EXPECT_EQ(help.displayWidth("\033[1mBold\033[0m"), 4);
+    EXPECT_EQ(help.displayWidth("\033[33mYellow\033[0m"), 6);
+    EXPECT_EQ(help.displayWidth("\033[2mDim text\033[0m"), 8);
+}
+
+// ============ PrepareContext with options struct ============
+
+TEST(HelpTest, PrepareContextWithOptions) {
+    Help help;
+    help.prepareContext({.helpWidth = 120, .outputHasColors = true});
+    EXPECT_EQ(help.helpWidth, 120);
+    EXPECT_TRUE(help.outputHasColors);
+}
+
+TEST(HelpTest, PrepareContextWithOptionsDefaultWidth) {
+    Help help;
+    help.prepareContext({.helpWidth = 0, .outputHasColors = false});
+    EXPECT_EQ(help.helpWidth, 80);
+    EXPECT_FALSE(help.outputHasColors);
+}
+
+TEST(HelpTest, PrepareContextPreservesExistingWidth) {
+    Help help;
+    help.helpWidth = 100;
+    help.prepareContext({.helpWidth = 60, .outputHasColors = true});
+    // helpWidth was already set, should not be overwritten
+    EXPECT_EQ(help.helpWidth, 100);
+    EXPECT_TRUE(help.outputHasColors);
+}
+
+// ============ FormatHelp with colors ============
+
+TEST(HelpTest, FormattedHelpWithColorsEnabled) {
+    Command cmd;
+    cmd.exitOverride();
+    cmd.name("test")
+       .description("A test program")
+       .option("-v, --verbose", "verbose output");
+    // Force colors on
+    cmd.configureOutput({
+        .getOutHasColors = []() { return true; },
+        .getErrHasColors = []() { return true; }
+    });
+    auto helpText = cmd.helpInformation();
+    // Should contain ANSI codes
+    EXPECT_NE(helpText.find("\033["), std::string::npos);
+}
+
+TEST(HelpTest, FormattedHelpWithColorsDisabled) {
+    Command cmd;
+    cmd.exitOverride();
+    cmd.name("test")
+       .description("A test program")
+       .option("-v, --verbose", "verbose output");
+    // Force colors off
+    cmd.configureOutput({
+        .getOutHasColors = []() { return false; },
+        .getErrHasColors = []() { return false; }
+    });
+    auto helpText = cmd.helpInformation();
+    // Should NOT contain ANSI codes
+    EXPECT_EQ(helpText.find("\033["), std::string::npos);
+}
+
+TEST(HelpTest, FormattedHelpErrorContextUsesErrColors) {
+    Command cmd;
+    cmd.exitOverride();
+    cmd.name("test")
+       .option("-v, --verbose", "verbose output");
+    // stdout has no colors, stderr has colors
+    cmd.configureOutput({
+        .getOutHasColors = []() { return false; },
+        .getErrHasColors = []() { return true; }
+    });
+    // Error context should use stderr color setting
+    auto helpText = cmd.helpInformation({.error = true});
+    EXPECT_NE(helpText.find("\033["), std::string::npos);
+
+    // Non-error context should use stdout color setting (no colors)
+    auto helpTextOut = cmd.helpInformation({.error = false});
+    EXPECT_EQ(helpTextOut.find("\033["), std::string::npos);
+}
+
+TEST(HelpTest, FormattedHelpWithColorsHasCorrectContent) {
+    Command cmd;
+    cmd.exitOverride();
+    cmd.name("myapp")
+       .description("My application")
+       .option("-v, --verbose", "enable verbose output");
+    cmd.argument("<file>", "input file");
+    cmd.command("serve").description("start the server");
+    cmd.configureOutput({
+        .getOutHasColors = []() { return true; }
+    });
+    auto helpText = cmd.helpInformation();
+    // Strip ANSI to verify content is correct
+    auto plain = stripColor(helpText);
+    EXPECT_NE(plain.find("Usage:"), std::string::npos);
+    EXPECT_NE(plain.find("myapp"), std::string::npos);
+    EXPECT_NE(plain.find("My application"), std::string::npos);
+    EXPECT_NE(plain.find("Arguments:"), std::string::npos);
+    EXPECT_NE(plain.find("Options:"), std::string::npos);
+    EXPECT_NE(plain.find("Commands:"), std::string::npos);
+    EXPECT_NE(plain.find("--verbose"), std::string::npos);
+    EXPECT_NE(plain.find("serve"), std::string::npos);
+}

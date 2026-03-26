@@ -21,6 +21,16 @@ namespace commander {
 class Command;
 
 /**
+ * @brief Options for Help::prepareContext().
+ * @see https://github.com/tj/commander.js#custom-help
+ * @since 0.1.0
+ */
+struct PrepareContextOptions {
+    int helpWidth = 80;             ///< Help text display width.
+    bool outputHasColors = false;   ///< Whether the output supports ANSI colors.
+};
+
+/**
  * @brief Help formatting class for generating CLI help text.
  *
  * Mirrors npm commander's Help class. All methods are virtual to allow
@@ -74,10 +84,14 @@ public:
     /// @since 0.1.0
     bool showGlobalOptions = false;
 
+    /// @brief Whether the output supports ANSI color codes.
+    /// @since 0.1.0
+    bool outputHasColors = false;
+
     // --- Prepare context ---
 
     /**
-     * @brief Prepare help context before formatting.
+     * @brief Prepare help context before formatting (legacy overload).
      *
      * Called by Command after applying overrides from configureHelp()
      * and just before calling formatHelp().
@@ -91,6 +105,22 @@ public:
      * @since 0.1.0
      */
     virtual void prepareContext(int contextHelpWidth = 80);
+
+    /**
+     * @brief Prepare help context with full options (width + color).
+     *
+     * Called by Command after applying overrides from configureHelp()
+     * and just before calling formatHelp().
+     *
+     * @param options Context options including helpWidth and outputHasColors.
+     * @par Example
+     * @code{.cpp}
+     *   help.prepareContext({.helpWidth = 120, .outputHasColors = true});
+     * @endcode
+     * @see https://github.com/tj/commander.js#custom-help
+     * @since 0.1.0
+     */
+    virtual void prepareContext(const PrepareContextOptions& options);
 
     // --- Visible items ---
 
@@ -323,6 +353,128 @@ public:
      * @since 0.1.0
      */
     virtual std::string commandDescription(const Command& cmd) const;
+
+    // --- Style methods ---
+
+    /**
+     * @brief Style a section title (e.g., "Usage:", "Options:").
+     *
+     * Bold when colors are enabled.
+     *
+     * @param str The title string.
+     * @return Styled string.
+     * @see https://github.com/tj/commander.js#custom-help
+     * @since 0.1.0
+     */
+    virtual std::string styleTitle(const std::string& str) const;
+
+    /**
+     * @brief Style the usage line content.
+     *
+     * Bold when colors are enabled.
+     *
+     * @param str The usage string.
+     * @return Styled string.
+     * @see https://github.com/tj/commander.js#custom-help
+     * @since 0.1.0
+     */
+    virtual std::string styleUsage(const std::string& str) const;
+
+    /**
+     * @brief Style the command description text.
+     *
+     * Delegates to styleDescriptionText().
+     *
+     * @param str The description string.
+     * @return Styled string.
+     * @see https://github.com/tj/commander.js#custom-help
+     * @since 0.1.0
+     */
+    virtual std::string styleCommandDescription(const std::string& str) const;
+
+    /**
+     * @brief Style an option term (e.g., "-v, --verbose").
+     *
+     * Yellow when colors are enabled.
+     *
+     * @param str The option term string.
+     * @return Styled string.
+     * @see https://github.com/tj/commander.js#custom-help
+     * @since 0.1.0
+     */
+    virtual std::string styleOptionTerm(const std::string& str) const;
+
+    /**
+     * @brief Style an option description.
+     *
+     * Delegates to styleDescriptionText().
+     *
+     * @param str The description string.
+     * @return Styled string.
+     * @see https://github.com/tj/commander.js#custom-help
+     * @since 0.1.0
+     */
+    virtual std::string styleOptionDescription(const std::string& str) const;
+
+    /**
+     * @brief Style a subcommand term (e.g., "serve [options]").
+     *
+     * Yellow when colors are enabled.
+     *
+     * @param str The subcommand term string.
+     * @return Styled string.
+     * @see https://github.com/tj/commander.js#custom-help
+     * @since 0.1.0
+     */
+    virtual std::string styleSubcommandTerm(const std::string& str) const;
+
+    /**
+     * @brief Style a subcommand description.
+     *
+     * Delegates to styleDescriptionText().
+     *
+     * @param str The description string.
+     * @return Styled string.
+     * @see https://github.com/tj/commander.js#custom-help
+     * @since 0.1.0
+     */
+    virtual std::string styleSubcommandDescription(const std::string& str) const;
+
+    /**
+     * @brief Style an argument term (e.g., "<file>").
+     *
+     * Yellow when colors are enabled.
+     *
+     * @param str The argument term string.
+     * @return Styled string.
+     * @see https://github.com/tj/commander.js#custom-help
+     * @since 0.1.0
+     */
+    virtual std::string styleArgumentTerm(const std::string& str) const;
+
+    /**
+     * @brief Style an argument description.
+     *
+     * Delegates to styleDescriptionText().
+     *
+     * @param str The description string.
+     * @return Styled string.
+     * @see https://github.com/tj/commander.js#custom-help
+     * @since 0.1.0
+     */
+    virtual std::string styleArgumentDescription(const std::string& str) const;
+
+    /**
+     * @brief Style description text.
+     *
+     * Dim when colors are enabled.
+     *
+     * @param str The description string.
+     * @return Styled string.
+     * @see https://github.com/tj/commander.js#custom-help
+     * @since 0.1.0
+     */
+    virtual std::string styleDescriptionText(const std::string& str) const;
 
     // --- Formatting ---
 

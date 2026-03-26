@@ -14,13 +14,52 @@
 #include <polycpp/commander/command.hpp>
 
 #include <algorithm>
+#include <cstdlib>
 #include <regex>
 #include <sstream>
 #include <string>
 #include <vector>
 
+#include <unistd.h>  // isatty, STDOUT_FILENO, STDERR_FILENO
+
 namespace polycpp {
 namespace commander {
+
+// --- ANSI color support ---
+
+namespace detail {
+
+/// @brief Check if stdout is a TTY.
+inline bool isStdoutTTY() { return isatty(STDOUT_FILENO) != 0; }
+
+/// @brief Check if stderr is a TTY.
+inline bool isStderrTTY() { return isatty(STDERR_FILENO) != 0; }
+
+/// @brief Check if environment variables allow color output.
+/// Respects NO_COLOR (https://no-color.org/) and FORCE_COLOR.
+inline bool envAllowsColors() {
+    if (std::getenv("NO_COLOR")) return false;
+    const char* fc = std::getenv("FORCE_COLOR");
+    if (fc) return std::string(fc) != "0";
+    return true;
+}
+
+/// @brief ANSI SGR code for bold text.
+constexpr const char* ANSI_BOLD = "\033[1m";
+/// @brief ANSI SGR code for dim text.
+constexpr const char* ANSI_DIM = "\033[2m";
+/// @brief ANSI SGR code for yellow text.
+constexpr const char* ANSI_YELLOW = "\033[33m";
+/// @brief ANSI SGR code to reset all attributes.
+constexpr const char* ANSI_RESET = "\033[0m";
+
+/// @brief Apply an ANSI SGR code to a string, appending reset.
+inline std::string applyAnsi(const std::string& str, const char* code) {
+    if (str.empty()) return str;
+    return std::string(code) + str + ANSI_RESET;
+}
+
+} // namespace detail
 
 inline std::string stripColor(const std::string& str) {
     // Strip SGR (Select Graphic Rendition) ANSI escape codes: \x1b[\d*(;\d*)*m
@@ -32,6 +71,13 @@ inline void Help::prepareContext(int contextHelpWidth) {
     if (helpWidth == 0) {
         helpWidth = contextHelpWidth > 0 ? contextHelpWidth : 80;
     }
+}
+
+inline void Help::prepareContext(const PrepareContextOptions& options) {
+    if (helpWidth == 0) {
+        helpWidth = options.helpWidth > 0 ? options.helpWidth : 80;
+    }
+    outputHasColors = options.outputHasColors;
 }
 
 inline std::vector<const Command*> Help::visibleCommands(const Command& cmd) const {
@@ -504,6 +550,48 @@ inline std::string Help::formatItem(const std::string& term, int termWidth,
     return result;
 }
 
+// --- Style methods ---
+
+inline std::string Help::styleTitle(const std::string& str) const {
+    return outputHasColors ? detail::applyAnsi(str, detail::ANSI_BOLD) : str;
+}
+
+inline std::string Help::styleUsage(const std::string& str) const {
+    return outputHasColors ? detail::applyAnsi(str, detail::ANSI_BOLD) : str;
+}
+
+inline std::string Help::styleCommandDescription(const std::string& str) const {
+    return styleDescriptionText(str);
+}
+
+inline std::string Help::styleOptionTerm(const std::string& str) const {
+    return outputHasColors ? detail::applyAnsi(str, detail::ANSI_YELLOW) : str;
+}
+
+inline std::string Help::styleOptionDescription(const std::string& str) const {
+    return styleDescriptionText(str);
+}
+
+inline std::string Help::styleSubcommandTerm(const std::string& str) const {
+    return outputHasColors ? detail::applyAnsi(str, detail::ANSI_YELLOW) : str;
+}
+
+inline std::string Help::styleSubcommandDescription(const std::string& str) const {
+    return styleDescriptionText(str);
+}
+
+inline std::string Help::styleArgumentTerm(const std::string& str) const {
+    return outputHasColors ? detail::applyAnsi(str, detail::ANSI_YELLOW) : str;
+}
+
+inline std::string Help::styleArgumentDescription(const std::string& str) const {
+    return styleDescriptionText(str);
+}
+
+inline std::string Help::styleDescriptionText(const std::string& str) const {
+    return outputHasColors ? detail::applyAnsi(str, detail::ANSI_DIM) : str;
+}
+
 inline std::string Help::formatHelp(const Command& cmd, const Help& helper) const {
     int termWidth = helper.padWidth(cmd);
 
@@ -512,32 +600,35 @@ inline std::string Help::formatHelp(const Command& cmd, const Help& helper) cons
     };
 
     // Usage
-    std::string output = "Usage: " + helper.commandUsage(cmd) + "\n";
+    std::string output = helper.styleTitle("Usage:") + " " +
+                          helper.styleUsage(helper.commandUsage(cmd)) + "\n";
 
     // Description
     std::string desc = helper.commandDescription(cmd);
     if (!desc.empty()) {
         int hw = helper.helpWidth > 0 ? helper.helpWidth : 80;
-        output += "\n" + helper.boxWrap(desc, hw) + "\n";
+        output += "\n" + helper.boxWrap(helper.styleCommandDescription(desc), hw) + "\n";
     }
 
     // Arguments
     auto visArgs = helper.visibleArguments(cmd);
     if (!visArgs.empty()) {
-        output += "\nArguments:\n";
+        output += "\n" + helper.styleTitle("Arguments:") + "\n";
         for (const auto* arg : visArgs) {
-            output += callFormatItem(helper.argumentTerm(*arg),
-                                      helper.argumentDescription(*arg)) + "\n";
+            output += callFormatItem(
+                helper.styleArgumentTerm(helper.argumentTerm(*arg)),
+                helper.styleArgumentDescription(helper.argumentDescription(*arg))) + "\n";
         }
     }
 
     // Options
     auto visOpts = helper.visibleOptions(cmd);
     if (!visOpts.empty()) {
-        output += "\nOptions:\n";
+        output += "\n" + helper.styleTitle("Options:") + "\n";
         for (const auto& opt : visOpts) {
-            output += callFormatItem(helper.optionTerm(opt),
-                                      helper.optionDescription(opt)) + "\n";
+            output += callFormatItem(
+                helper.styleOptionTerm(helper.optionTerm(opt)),
+                helper.styleOptionDescription(helper.optionDescription(opt))) + "\n";
         }
     }
 
@@ -545,10 +636,11 @@ inline std::string Help::formatHelp(const Command& cmd, const Help& helper) cons
     if (helper.showGlobalOptions) {
         auto globalOpts = helper.visibleGlobalOptions(cmd);
         if (!globalOpts.empty()) {
-            output += "\nGlobal Options:\n";
+            output += "\n" + helper.styleTitle("Global Options:") + "\n";
             for (const auto& opt : globalOpts) {
-                output += callFormatItem(helper.optionTerm(opt),
-                                          helper.optionDescription(opt)) + "\n";
+                output += callFormatItem(
+                    helper.styleOptionTerm(helper.optionTerm(opt)),
+                    helper.styleOptionDescription(helper.optionDescription(opt))) + "\n";
             }
         }
     }
@@ -556,10 +648,11 @@ inline std::string Help::formatHelp(const Command& cmd, const Help& helper) cons
     // Commands
     auto visCmds = helper.visibleCommands(cmd);
     if (!visCmds.empty()) {
-        output += "\nCommands:\n";
+        output += "\n" + helper.styleTitle("Commands:") + "\n";
         for (const auto* sub : visCmds) {
-            output += callFormatItem(helper.subcommandTerm(*sub),
-                                      helper.subcommandDescription(*sub)) + "\n";
+            output += callFormatItem(
+                helper.styleSubcommandTerm(helper.subcommandTerm(*sub)),
+                helper.styleSubcommandDescription(helper.subcommandDescription(*sub))) + "\n";
         }
     }
 
