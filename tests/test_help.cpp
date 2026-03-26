@@ -285,7 +285,7 @@ TEST(HelpTest, StyleMethodsWithColor) {
     auto title = help.styleTitle("Options:");
     EXPECT_NE(title, "Options:");
     EXPECT_NE(title.find("\033[1m"), std::string::npos);
-    EXPECT_NE(title.find("\033[0m"), std::string::npos);
+    EXPECT_NE(title.find("\033[22m"), std::string::npos);
 
     // Usage should be bold
     auto usage = help.styleUsage("myapp [options]");

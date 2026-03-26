@@ -12,6 +12,7 @@
 
 #include <polycpp/commander/command.hpp>
 #include <polycpp/commander/suggest_similar.hpp>
+#include <polycpp/process.hpp>
 
 #include <algorithm>
 #include <cstdlib>
@@ -45,10 +46,22 @@ inline Command::Command(const std::string& name)
     outputConfiguration_.getOutHelpWidth = []() -> int { return 80; };
     outputConfiguration_.getErrHelpWidth = []() -> int { return 80; };
     outputConfiguration_.getOutHasColors = []() -> bool {
-        return detail::isStdoutTTY() && detail::envAllowsColors();
+        if (!::isatty(STDOUT_FILENO)) return false;
+        auto env = polycpp::process::env();
+        if (env.hasKey("NO_COLOR")) return false;
+        if (env.hasKey("FORCE_COLOR")) {
+            return env["FORCE_COLOR"].asString() != "0";
+        }
+        return true;
     };
     outputConfiguration_.getErrHasColors = []() -> bool {
-        return detail::isStderrTTY() && detail::envAllowsColors();
+        if (!::isatty(STDERR_FILENO)) return false;
+        auto env = polycpp::process::env();
+        if (env.hasKey("NO_COLOR")) return false;
+        if (env.hasKey("FORCE_COLOR")) {
+            return env["FORCE_COLOR"].asString() != "0";
+        }
+        return true;
     };
 }
 
@@ -1135,10 +1148,11 @@ inline void Command::parseCommand_(const std::vector<std::string>& initialOperan
 }
 
 inline void Command::parseOptionsEnv_() {
+    auto envObj = polycpp::process::env();
     for (const auto& option : options) {
         if (option.envVar_.has_value()) {
-            const char* envVal = std::getenv(option.envVar_->c_str());
-            if (envVal != nullptr) {
+            if (envObj.hasKey(*option.envVar_)) {
+                std::string envVal = envObj[*option.envVar_].asString();
                 std::string optionKey = option.attributeName();
                 auto currentValue = getOptionValue(optionKey);
                 auto currentSource = getOptionValueSource(optionKey);
@@ -1146,7 +1160,7 @@ inline void Command::parseOptionsEnv_() {
                 if (!currentValue.has_value() ||
                     currentSource == "default" || currentSource == "config" || currentSource == "env") {
                     if (option.required || option.optional) {
-                        emit("optionEnv:" + option.name(), std::string(envVal));
+                        emit("optionEnv:" + option.name(), envVal);
                     } else {
                         emit("optionEnv:" + option.name());
                     }
