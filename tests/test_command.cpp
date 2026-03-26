@@ -748,3 +748,134 @@ TEST(CommandTest, DoubleDashTerminatesOptions) {
     EXPECT_FALSE(o.count("verbose") && o["verbose"].has_value() &&
                  o["verbose"].type() == typeid(bool) && std::any_cast<bool>(o["verbose"]));
 }
+
+// ============ Help Subcommand ============
+
+TEST(CommandTest, HelpCommandShowsRootHelpWhenNoSubcommand) {
+    Command cmd;
+    cmd.exitOverride();
+    cmd.name("myapp");
+    cmd.command("sub1").action([](auto&, auto&, auto&) {});
+    std::string captured;
+    cmd.configureOutput({.writeOut = [&](const std::string& s) { captured += s; }});
+    try {
+        parseUser(cmd, {"help"});
+    } catch (const CommanderError& e) {
+        // help exits via exit_ which throws with exitOverride
+    }
+    EXPECT_NE(captured.find("Usage:"), std::string::npos);
+    EXPECT_NE(captured.find("myapp"), std::string::npos);
+}
+
+TEST(CommandTest, HelpCommandShowsSubcommandHelp) {
+    Command cmd;
+    cmd.exitOverride();
+    cmd.name("myapp");
+    auto& sub = cmd.command("install").description("install packages");
+    sub.exitOverride();
+    std::string captured;
+    sub.configureOutput({.writeOut = [&](const std::string& s) { captured += s; }});
+    try {
+        parseUser(cmd, {"help", "install"});
+    } catch (const CommanderError&) {
+    }
+    EXPECT_NE(captured.find("install"), std::string::npos);
+}
+
+TEST(CommandTest, HelpCommandDisabledWithFalse) {
+    Command cmd;
+    cmd.exitOverride();
+    cmd.name("myapp");
+    cmd.helpCommand(false);
+    cmd.command("foo").action([](auto&, auto&, auto&) {});
+    auto helpText = cmd.helpInformation();
+    // "help [command]" should not appear in help output
+    EXPECT_EQ(helpText.find("help [command]"), std::string::npos);
+}
+
+TEST(CommandTest, HelpCommandCustomName) {
+    Command cmd;
+    cmd.exitOverride();
+    cmd.name("myapp");
+    cmd.helpCommand("assist [cmd]", "show assistance");
+    auto helpText = cmd.helpInformation();
+    EXPECT_NE(helpText.find("assist"), std::string::npos);
+    EXPECT_NE(helpText.find("show assistance"), std::string::npos);
+}
+
+TEST(CommandTest, HelpCommandNotAddedWhenRootHasAction) {
+    Command cmd;
+    cmd.exitOverride();
+    cmd.name("myapp");
+    cmd.command("sub1").action([](auto&, auto&, auto&) {});
+    cmd.action([](auto&, auto&, auto&) {});
+    auto helpText = cmd.helpInformation();
+    // When root has action, implicit help command is NOT added
+    EXPECT_EQ(helpText.find("help [command]"), std::string::npos);
+}
+
+TEST(CommandTest, HelpCommandAppearsInHelpOutput) {
+    Command cmd;
+    cmd.exitOverride();
+    cmd.name("myapp");
+    cmd.command("foo").description("do foo stuff");
+    auto helpText = cmd.helpInformation();
+    EXPECT_NE(helpText.find("Commands:"), std::string::npos);
+    EXPECT_NE(helpText.find("help [command]"), std::string::npos);
+    EXPECT_NE(helpText.find("display help for command"), std::string::npos);
+}
+
+TEST(CommandTest, HelpCommandForceAddWithTrue) {
+    Command cmd;
+    cmd.exitOverride();
+    cmd.name("myapp");
+    cmd.helpCommand(true);
+    auto helpText = cmd.helpInformation();
+    EXPECT_NE(helpText.find("help [command]"), std::string::npos);
+}
+
+TEST(CommandTest, AddHelpCommandWithCustomObject) {
+    Command cmd;
+    cmd.exitOverride();
+    cmd.name("myapp");
+    auto customHelp = std::make_unique<Command>("aide");
+    customHelp->description("custom help command");
+    customHelp->helpOption(false);
+    customHelp->arguments("[cmd]");
+    cmd.addHelpCommand(std::move(customHelp));
+    auto helpText = cmd.helpInformation();
+    EXPECT_NE(helpText.find("aide"), std::string::npos);
+    EXPECT_NE(helpText.find("custom help command"), std::string::npos);
+}
+
+TEST(CommandTest, HelpCommandDispatchesUnknownSubcommand) {
+    // When "help unknown" is called, it should dispatch to the unknown subcommand
+    // which will cause help to be shown (via --help flag fallback)
+    Command cmd;
+    cmd.exitOverride();
+    cmd.name("myapp");
+    cmd.command("sub1").action([](auto&, auto&, auto&) {});
+    std::string errCaptured;
+    cmd.configureOutput({
+        .writeOut = [](const std::string&) {},
+        .writeErr = [&](const std::string& s) { errCaptured += s; }
+    });
+    try {
+        parseUser(cmd, {"help", "unknown"});
+    } catch (const CommanderError&) {
+    }
+    // Should have tried to dispatch to "unknown" and generated an error/help
+}
+
+TEST(CommandTest, HelpCommandInheritedBySubcommand) {
+    Command cmd;
+    cmd.exitOverride();
+    cmd.name("myapp");
+    cmd.helpCommand(false);
+
+    auto& sub = cmd.command("sub1");
+    sub.command("nested").action([](auto&, auto&, auto&) {});
+    // Sub should inherit addImplicitHelpCommand_=false
+    auto helpText = sub.helpInformation();
+    EXPECT_EQ(helpText.find("help [command]"), std::string::npos);
+}

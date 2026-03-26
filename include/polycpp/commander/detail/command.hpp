@@ -666,6 +666,42 @@ inline Command& Command::helpOption(bool enable) {
     return *this;
 }
 
+inline Command& Command::helpCommand(const std::string& nameAndArgs, const std::string& description) {
+    std::string effectiveNameAndArgs = nameAndArgs.empty() ? "help [command]" : nameAndArgs;
+    std::string effectiveDescription = description.empty() ? "display help for command" : description;
+
+    // Parse "name <args...>"
+    std::regex re("([^ ]+) *(.*)");
+    std::smatch match;
+    std::string helpName, helpArgs;
+    if (std::regex_match(effectiveNameAndArgs, match, re)) {
+        helpName = match[1].str();
+        helpArgs = match[2].str();
+    } else {
+        helpName = effectiveNameAndArgs;
+    }
+
+    auto helpCmd = createCommand(helpName);
+    helpCmd->helpOption(false);
+    if (!helpArgs.empty()) helpCmd->arguments(helpArgs);
+    if (!effectiveDescription.empty()) helpCmd->description(effectiveDescription);
+
+    addImplicitHelpCommand_ = true;
+    helpCommand_ = std::move(helpCmd);
+    return *this;
+}
+
+inline Command& Command::helpCommand(bool enable) {
+    addImplicitHelpCommand_ = enable;
+    return *this;
+}
+
+inline Command& Command::addHelpCommand(std::unique_ptr<Command> cmd) {
+    addImplicitHelpCommand_ = true;
+    helpCommand_ = std::move(cmd);
+    return *this;
+}
+
 inline void Command::outputHelp(const HelpContext& context) {
     auto writeFunc = context.error
         ? outputConfiguration_.writeErr
@@ -795,6 +831,7 @@ inline Command& Command::copyInheritedSettings(const Command& sourceCommand) {
     showHelpAfterError_ = sourceCommand.showHelpAfterError_;
     showSuggestionAfterError_ = sourceCommand.showSuggestionAfterError_;
     helpConfiguration_ = sourceCommand.helpConfiguration_;
+    addImplicitHelpCommand_ = sourceCommand.addImplicitHelpCommand_;
     return *this;
 }
 

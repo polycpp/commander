@@ -647,6 +647,55 @@ public:
     Command& helpOption(bool enable);
 
     /**
+     * @brief Customize or override the default help subcommand.
+     *
+     * By default a help subcommand is automatically added if your command has
+     * subcommands and no root action handler. Use this to set a custom name
+     * and/or description.
+     *
+     * @param nameAndArgs Custom name and arguments (e.g. "assist [cmd]").
+     * @param description Custom description (default: "display help for command").
+     * @return Reference to this command for chaining.
+     * @par Example
+     * @code{.cpp}
+     *   program.helpCommand("assist [cmd]", "show help");
+     * @endcode
+     * @see https://github.com/tj/commander.js#custom-help
+     * @since 0.1.0
+     */
+    Command& helpCommand(const std::string& nameAndArgs, const std::string& description = "");
+
+    /**
+     * @brief Enable or disable the implicit help subcommand.
+     *
+     * Pass false to suppress the automatic help subcommand.
+     * Pass true to force-add it even when there are no subcommands.
+     *
+     * @param enable Whether to enable or disable the help subcommand.
+     * @return Reference to this command for chaining.
+     * @par Example
+     * @code{.cpp}
+     *   program.helpCommand(false); // suppress help subcommand
+     *   program.helpCommand(true);  // force-add even without subcommands
+     * @endcode
+     * @see https://github.com/tj/commander.js#custom-help
+     * @since 0.1.0
+     */
+    Command& helpCommand(bool enable);
+
+    /**
+     * @brief Add a prepared custom help command.
+     *
+     * The command will be used as the help subcommand, replacing the default.
+     *
+     * @param cmd The custom help command (moved via unique_ptr).
+     * @return Reference to this command for chaining.
+     * @see https://github.com/tj/commander.js#custom-help
+     * @since 0.1.0
+     */
+    Command& addHelpCommand(std::unique_ptr<Command> cmd);
+
+    /**
      * @brief Output help information for this command.
      * @param context Help context (error: true for stderr).
      * @see https://github.com/tj/commander.js#custom-help
