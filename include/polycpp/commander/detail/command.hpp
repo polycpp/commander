@@ -15,14 +15,15 @@
 
 #include <algorithm>
 #include <cstdlib>
-#include <filesystem>
 #include <iostream>
 #include <regex>
 #include <sstream>
 #include <stdexcept>
 
-#include <sys/wait.h>
-#include <unistd.h>
+#include <polycpp/child_process.hpp>
+#include <polycpp/fs.hpp>
+#include <polycpp/path.hpp>
+#include <polycpp/process.hpp>
 
 namespace polycpp {
 namespace commander {
@@ -1364,16 +1365,15 @@ inline void Command::executeSubCommand_(Command& subCommand,
 
     // If we have a scriptPath_, resolve relative to its directory
     if (!scriptPath_.empty()) {
-        namespace fs = std::filesystem;
         std::string resolvedScript;
         try {
-            resolvedScript = fs::canonical(scriptPath_).string();
+            resolvedScript = polycpp::fs::realpathSync(scriptPath_);
         } catch (...) {
             resolvedScript = scriptPath_;
         }
-        std::string scriptDir = fs::path(resolvedScript).parent_path().string();
+        std::string scriptDir = polycpp::path::dirname(resolvedScript);
         if (!searchDir.empty()) {
-            searchDir = (fs::path(scriptDir) / searchDir).string();
+            searchDir = polycpp::path::join(scriptDir, searchDir);
         } else {
             searchDir = scriptDir;
         }
@@ -1382,10 +1382,12 @@ inline void Command::executeSubCommand_(Command& subCommand,
     // Look for a local file in the search directory first
     std::string resolvedPath;
     if (!searchDir.empty()) {
-        namespace fs = std::filesystem;
-        auto candidate = fs::path(searchDir) / execName;
-        if (fs::exists(candidate)) {
-            resolvedPath = candidate.string();
+        std::string candidate = polycpp::path::join(searchDir, execName);
+        try {
+            polycpp::fs::accessSync(candidate, polycpp::fs::constants::kX_OK);
+            resolvedPath = candidate;
+        } catch (...) {
+            // Not found in search dir
         }
     }
 
@@ -1407,62 +1409,52 @@ inline void Command::executeSubCommand_(Command& subCommand,
     launchArgs.insert(launchArgs.end(), operands.begin(), operands.end());
     launchArgs.insert(launchArgs.end(), unknown.begin(), unknown.end());
 
-    // Fork + exec
-    pid_t pid = fork();
-    if (pid == 0) {
-        // Child process
-        std::vector<const char*> cargs;
-        cargs.push_back(resolvedPath.c_str());
-        for (const auto& a : launchArgs) {
-            cargs.push_back(a.c_str());
+    // Spawn child process synchronously with inherited stdio
+    polycpp::child_process::SpawnOptions spawnOpts;
+    spawnOpts.stdio = "inherit";
+
+    auto result = polycpp::child_process::spawnSync(resolvedPath, launchArgs, spawnOpts);
+
+    if (!result.error.empty()) {
+        if (result.errorCode == "ENOENT") {
+            std::string msg = "'" + execName + "' does not exist\n - searched for: " + resolvedPath;
+            error(msg, {.exitCode = 1, .code = "commander.executeSubCommandAsync"});
+        } else {
+            error(result.error, {.exitCode = 1, .code = "commander.executeSubCommandAsync"});
         }
-        cargs.push_back(nullptr);
-        execvp(resolvedPath.c_str(), const_cast<char* const*>(cargs.data()));
-        // If execvp returns, it failed
-        perror("execvp");
-        _exit(127);
-    } else if (pid > 0) {
-        // Parent: wait for child
-        int status = 0;
-        waitpid(pid, &status, 0);
-        if (WIFEXITED(status)) {
-            int code = WEXITSTATUS(status);
-            if (code != 0) {
-                exit_(code, "commander.executeSubCommandAsync", "(close)");
-            }
-        } else if (WIFSIGNALED(status)) {
-            // Child killed by signal
-            exit_(1, "commander.executeSubCommandAsync", "(close)");
-        }
-    } else {
-        // Fork failed
-        error("failed to fork subprocess", {.exitCode = 1, .code = "commander.executeSubCommandAsync"});
+        return;
+    }
+
+    if (result.status != 0) {
+        exit_(result.status, "commander.executeSubCommandAsync", "(close)");
     }
 }
 
 inline std::string Command::findProgram_(const std::string& name) const {
-    namespace fs = std::filesystem;
-
     // If the name contains a path separator, treat as a path
     if (name.find('/') != std::string::npos) {
-        if (access(name.c_str(), X_OK) == 0) {
+        try {
+            polycpp::fs::accessSync(name, polycpp::fs::constants::kX_OK);
             return name;
+        } catch (...) {
+            return "";
         }
-        return "";
     }
 
     // Search PATH
-    const char* pathEnv = std::getenv("PATH");
-    if (!pathEnv) return "";
+    std::string pathStr = polycpp::process::getenv("PATH");
+    if (pathStr.empty()) return "";
 
-    std::string pathStr(pathEnv);
     std::istringstream stream(pathStr);
     std::string dir;
     while (std::getline(stream, dir, ':')) {
         if (dir.empty()) continue;
-        auto candidate = fs::path(dir) / name;
-        if (access(candidate.c_str(), X_OK) == 0) {
-            return candidate.string();
+        std::string candidate = polycpp::path::join(dir, name);
+        try {
+            polycpp::fs::accessSync(candidate, polycpp::fs::constants::kX_OK);
+            return candidate;
+        } catch (...) {
+            continue;
         }
     }
     return "";
