@@ -1,6 +1,11 @@
 #include <polycpp/commander/detail/aggregator.hpp>
 #include <gtest/gtest.h>
 
+#include <filesystem>
+#include <fstream>
+#include <sys/stat.h>
+#include <unistd.h>
+
 using namespace polycpp::commander;
 
 // Helper to parse from "user" mode (no node/script prefix)
@@ -747,4 +752,155 @@ TEST(CommandTest, DoubleDashTerminatesOptions) {
     // verbose should NOT be set (it was after --)
     EXPECT_FALSE(o.count("verbose") && o["verbose"].has_value() &&
                  o["verbose"].type() == typeid(bool) && std::any_cast<bool>(o["verbose"]));
+}
+
+// ============ Executable Subcommands ============
+
+TEST(CommandTest, ExecutableSubcommandDefined) {
+    Command cmd("myapp");
+    cmd.exitOverride();
+    cmd.executableCommand("install", "install packages");
+    EXPECT_EQ(cmd.commands.size(), 1u);
+}
+
+TEST(CommandTest, ExecutableSubcommandReturnsThis) {
+    Command cmd("myapp");
+    cmd.exitOverride();
+    auto& ret = cmd.executableCommand("install", "install packages");
+    EXPECT_EQ(&ret, &cmd);  // Returns *this, not new subcommand
+}
+
+TEST(CommandTest, ExecutableSubcommandDir) {
+    Command cmd("myapp");
+    cmd.exitOverride();
+    cmd.executableDir("/usr/local/bin");
+    EXPECT_EQ(cmd.executableDir(), "/usr/local/bin");
+}
+
+TEST(CommandTest, ExecutableSubcommandDirDefault) {
+    Command cmd("myapp");
+    EXPECT_EQ(cmd.executableDir(), "");
+}
+
+TEST(CommandTest, ExecutableSubcommandNotFound) {
+    Command cmd("myapp");
+    cmd.exitOverride();
+    cmd.configureOutput({.writeErr = [](const std::string&) {},
+                         .outputError = [](const std::string&, auto) {}});
+    cmd.executableCommand("nonexistent-xyz", "won't work");
+    EXPECT_THROW(
+        cmd.parse({"nonexistent-xyz"}, {.from = "user"}),
+        CommanderError
+    );
+}
+
+TEST(CommandTest, ExecutableSubcommandRun) {
+    // Create a temp script that writes a marker file
+    std::string marker = "/tmp/commander-exec-test-" + std::to_string(getpid());
+    std::string script = "/tmp/myapp-runcmd";
+    {
+        std::ofstream f(script);
+        f << "#!/bin/sh\ntouch " << marker << "\n";
+    }
+    chmod(script.c_str(), 0755);
+
+    Command cmd("myapp");
+    cmd.exitOverride();
+    cmd.executableDir("/tmp");
+    cmd.executableCommand("runcmd", "run a test command");
+    cmd.parse({"runcmd"}, {.from = "user"});
+
+    EXPECT_TRUE(std::filesystem::exists(marker));
+    std::filesystem::remove(marker);
+    std::filesystem::remove(script);
+}
+
+TEST(CommandTest, ExecutableSubcommandPassesArgs) {
+    // Create a script that writes its args to a file
+    std::string output = "/tmp/commander-args-test-" + std::to_string(getpid());
+    std::string script = "/tmp/myapp-argcmd";
+    {
+        std::ofstream f(script);
+        f << "#!/bin/sh\necho \"$@\" > " << output << "\n";
+    }
+    chmod(script.c_str(), 0755);
+
+    Command cmd("myapp");
+    cmd.exitOverride();
+    cmd.executableDir("/tmp");
+    cmd.executableCommand("argcmd", "test args");
+    cmd.parse({"argcmd", "hello", "world"}, {.from = "user"});
+
+    // Read back the output
+    std::ifstream in(output);
+    std::string content;
+    std::getline(in, content);
+    EXPECT_EQ(content, "hello world");
+
+    std::filesystem::remove(output);
+    std::filesystem::remove(script);
+}
+
+TEST(CommandTest, ExecutableSubcommandInHelp) {
+    Command cmd("myapp");
+    cmd.exitOverride();
+    cmd.executableCommand("install", "install packages");
+    auto help = cmd.helpInformation();
+    EXPECT_TRUE(help.find("install") != std::string::npos);
+    EXPECT_TRUE(help.find("install packages") != std::string::npos);
+}
+
+TEST(CommandTest, ExecutableSubcommandCustomExecutable) {
+    // Create a temp script with a custom name
+    std::string marker = "/tmp/commander-custom-exec-test-" + std::to_string(getpid());
+    std::string script = "/tmp/my-custom-installer";
+    {
+        std::ofstream f(script);
+        f << "#!/bin/sh\ntouch " << marker << "\n";
+    }
+    chmod(script.c_str(), 0755);
+
+    Command cmd("myapp");
+    cmd.exitOverride();
+    cmd.executableDir("/tmp");
+    cmd.executableCommand("install", "install packages", "my-custom-installer");
+    cmd.parse({"install"}, {.from = "user"});
+
+    EXPECT_TRUE(std::filesystem::exists(marker));
+    std::filesystem::remove(marker);
+    std::filesystem::remove(script);
+}
+
+TEST(CommandTest, ExecutableSubcommandExitCode) {
+    // Create a script that exits with non-zero
+    std::string script = "/tmp/myapp-failcmd";
+    {
+        std::ofstream f(script);
+        f << "#!/bin/sh\nexit 42\n";
+    }
+    chmod(script.c_str(), 0755);
+
+    Command cmd("myapp");
+    cmd.exitOverride();
+    cmd.executableDir("/tmp");
+    cmd.executableCommand("failcmd", "a failing command");
+    try {
+        cmd.parse({"failcmd"}, {.from = "user"});
+        FAIL() << "Expected CommanderError to be thrown";
+    } catch (const CommanderError& e) {
+        EXPECT_EQ(e.exitCode, 42);
+        EXPECT_EQ(e.code, "commander.executeSubCommandAsync");
+    }
+
+    std::filesystem::remove(script);
+}
+
+TEST(CommandTest, ExecutableSubcommandWithArguments) {
+    // executableCommand can define arguments like command()
+    Command cmd("myapp");
+    cmd.exitOverride();
+    cmd.executableCommand("install <pkg>", "install a package");
+    EXPECT_EQ(cmd.commands.size(), 1u);
+    EXPECT_EQ(cmd.commands[0]->name(), "install");
+    EXPECT_EQ(cmd.commands[0]->registeredArguments.size(), 1u);
 }

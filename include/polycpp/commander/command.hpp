@@ -463,6 +463,47 @@ public:
     Command& command(const std::string& nameAndArgs, const CommandOptions& opts = {});
 
     /**
+     * @brief Define an executable subcommand that spawns `<program>-<subcommand>`.
+     *
+     * Instead of calling an action handler, the parent program spawns an external
+     * process named `<program>-<subcommand>` (or a custom executable name).
+     * Returns `*this` (not the new subcommand) for chaining.
+     *
+     * @param nameAndArgs Command name and optional argument definitions.
+     * @param description Human-readable description of the subcommand.
+     * @param executableFile Optional custom executable name or path. If empty,
+     *        defaults to `<parentName>-<subcommandName>`.
+     * @return Reference to this (parent) command for chaining.
+     * @par Example
+     * @code{.cpp}
+     *   program.executableCommand("install", "install packages");
+     *   program.executableCommand("build", "build the project", "my-builder");
+     * @endcode
+     * @see https://github.com/tj/commander.js#commands
+     * @since 0.1.0
+     */
+    Command& executableCommand(const std::string& nameAndArgs,
+                               const std::string& description,
+                               const std::string& executableFile = "");
+
+    /**
+     * @brief Set the directory to search for executable subcommands.
+     * @param path The directory path.
+     * @return Reference to this command for chaining.
+     * @see https://github.com/tj/commander.js
+     * @since 0.1.0
+     */
+    Command& executableDir(const std::string& path);
+
+    /**
+     * @brief Get the directory to search for executable subcommands.
+     * @return The executable directory path, or empty string if not set.
+     * @see https://github.com/tj/commander.js
+     * @since 0.1.0
+     */
+    std::string executableDir() const;
+
+    /**
      * @brief Add a prepared subcommand.
      *
      * Unlike command(), this does NOT return the new subcommand —
@@ -936,6 +977,10 @@ private:
     void dispatchSubcommand_(const std::string& commandName,
                              const std::vector<std::string>& operands,
                              const std::vector<std::string>& unknown);
+    void executeSubCommand_(Command& subCommand,
+                            const std::vector<std::string>& operands,
+                            const std::vector<std::string>& unknown);
+    std::string findProgram_(const std::string& name) const;
     void dispatchHelpCommand_(const std::string& subcommandName);
     void callHooks_(const std::string& event);
     void callSubCommandHook_(Command& subCommand, const std::string& event);
@@ -965,6 +1010,10 @@ private:
     std::string versionOptionName_;
     std::vector<std::string> aliases_;
     std::string scriptPath_;
+
+    bool executableHandler_ = false;
+    std::optional<std::string> executableFile_;
+    std::optional<std::string> executableDir_;
 
     bool allowUnknownOption_ = false;
     bool allowExcessArguments_ = false;
