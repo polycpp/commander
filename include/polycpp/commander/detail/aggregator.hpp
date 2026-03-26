@@ -8,6 +8,10 @@
 
 // Declarations
 #include <polycpp/commander/error.hpp>
+#include <polycpp/commander/argument.hpp>
+#include <polycpp/commander/option.hpp>
 
 // Inline implementations
 #include <polycpp/commander/detail/error.hpp>
+#include <polycpp/commander/detail/argument.hpp>
+#include <polycpp/commander/detail/option.hpp>

@@ -42,4 +42,12 @@ if(POLYCPP_COMMANDER_BUILD_TESTS)
     target_link_libraries(test_error PRIVATE polycpp_commander GTest::gtest_main)
     include(GoogleTest)
     gtest_discover_tests(test_error)
+
+    add_executable(test_argument tests/test_argument.cpp)
+    target_link_libraries(test_argument PRIVATE polycpp_commander GTest::gtest_main)
+    gtest_discover_tests(test_argument)
+
+    add_executable(test_option tests/test_option.cpp)
+    target_link_libraries(test_option PRIVATE polycpp_commander GTest::gtest_main)
+    gtest_discover_tests(test_option)
 endif()
