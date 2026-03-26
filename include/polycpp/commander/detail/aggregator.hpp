@@ -10,8 +10,10 @@
 #include <polycpp/commander/error.hpp>
 #include <polycpp/commander/argument.hpp>
 #include <polycpp/commander/option.hpp>
+#include <polycpp/commander/suggest_similar.hpp>
 
 // Inline implementations
 #include <polycpp/commander/detail/error.hpp>
 #include <polycpp/commander/detail/argument.hpp>
 #include <polycpp/commander/detail/option.hpp>
+#include <polycpp/commander/detail/suggest_similar.hpp>

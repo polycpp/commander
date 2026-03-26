@@ -50,4 +50,8 @@ if(POLYCPP_COMMANDER_BUILD_TESTS)
     add_executable(test_option tests/test_option.cpp)
     target_link_libraries(test_option PRIVATE polycpp_commander GTest::gtest_main)
     gtest_discover_tests(test_option)
+
+    add_executable(test_suggest_similar tests/test_suggest_similar.cpp)
+    target_link_libraries(test_suggest_similar PRIVATE polycpp_commander GTest::gtest_main)
+    gtest_discover_tests(test_suggest_similar)
 endif()
