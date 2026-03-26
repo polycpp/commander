@@ -14,8 +14,8 @@
 
 #include <polycpp/events/detail/aggregator.hpp>
 
-#include <any>
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -58,9 +58,9 @@ struct OutputConfiguration {
     std::function<bool()> getErrHasColors;              ///< Whether stderr supports ANSI colors.
 };
 
-/// @brief Type alias for option value storage.
+/// @brief Type alias for option value storage (always a JsonObject).
 /// @since 0.1.0
-using OptionValues = std::unordered_map<std::string, std::any>;
+using OptionValues = polycpp::JsonValue;
 
 /// @brief Type alias for option value source tracking.
 /// @since 0.1.0
@@ -83,11 +83,11 @@ struct CommandOptions {
 /// @brief Type alias for action handler functions.
 ///
 /// The action handler receives (processedArgs..., opts, command).
-/// In C++ we pass the processed args as a vector of std::any,
-/// the opts as OptionValues, and a reference to the command.
+/// In C++ we pass the processed args as a vector of polycpp::JsonValue,
+/// the opts as OptionValues (a JsonValue object), and a reference to the command.
 /// @since 0.1.0
-using ActionFn = std::function<void(const std::vector<std::any>& args,
-                                     const OptionValues& opts,
+using ActionFn = std::function<void(const std::vector<polycpp::JsonValue>& args,
+                                     const polycpp::JsonValue& opts,
                                      Command& cmd)>;
 
 /// @brief Type alias for hook functions.
@@ -321,7 +321,7 @@ public:
      * @since 0.1.0
      */
     Command& option(const std::string& flags, const std::string& description,
-                    const std::any& defaultValue);
+                    const polycpp::JsonValue& defaultValue);
 
     /**
      * @brief Add an option with flags, description, custom parser, and default value.
@@ -334,7 +334,7 @@ public:
      * @since 0.1.0
      */
     Command& option(const std::string& flags, const std::string& description,
-                    ParseFn parseArg, const std::any& defaultValue = {});
+                    ParseFn parseArg, const polycpp::JsonValue& defaultValue = {});
 
     /**
      * @brief Add a required option (must be specified on command line).
@@ -356,7 +356,7 @@ public:
      * @since 0.1.0
      */
     Command& requiredOption(const std::string& flags, const std::string& description,
-                            const std::any& defaultValue);
+                            const polycpp::JsonValue& defaultValue);
 
     /**
      * @brief Add a required option with custom parser and default value.
@@ -369,7 +369,7 @@ public:
      * @since 0.1.0
      */
     Command& requiredOption(const std::string& flags, const std::string& description,
-                            ParseFn parseArg, const std::any& defaultValue = {});
+                            ParseFn parseArg, const polycpp::JsonValue& defaultValue = {});
 
     /**
      * @brief Add a prepared Option object.
@@ -598,7 +598,7 @@ public:
      * @par Example
      * @code{.cpp}
      *   auto opts = program.opts();
-     *   auto verbose = std::any_cast<bool>(opts["verbose"]);
+     *   bool verbose = opts["verbose"].asBool();
      * @endcode
      * @see https://github.com/tj/commander.js
      * @since 0.1.0
@@ -619,11 +619,11 @@ public:
     /**
      * @brief Retrieve a single option value.
      * @param key The option attribute name (camelCase).
-     * @return The option value, or empty std::any if not set.
+     * @return The option value, or null JsonValue if not set.
      * @see https://github.com/tj/commander.js
      * @since 0.1.0
      */
-    std::any getOptionValue(const std::string& key) const;
+    polycpp::JsonValue getOptionValue(const std::string& key) const;
 
     /**
      * @brief Store an option value.
@@ -633,7 +633,7 @@ public:
      * @see https://github.com/tj/commander.js
      * @since 0.1.0
      */
-    Command& setOptionValue(const std::string& key, std::any value);
+    Command& setOptionValue(const std::string& key, const polycpp::JsonValue& value);
 
     /**
      * @brief Store option value with source tracking.
@@ -644,7 +644,7 @@ public:
      * @see https://github.com/tj/commander.js
      * @since 0.1.0
      */
-    Command& setOptionValueWithSource(const std::string& key, std::any value,
+    Command& setOptionValueWithSource(const std::string& key, const polycpp::JsonValue& value,
                                        const std::string& source);
 
     /**
@@ -783,7 +783,7 @@ public:
      * @see https://github.com/tj/commander.js#custom-help
      * @since 0.1.0
      */
-    Command& configureHelp(const std::unordered_map<std::string, std::any>& config);
+    Command& configureHelp(const std::map<std::string, polycpp::JsonValue>& config);
 
     /**
      * @brief Get current help configuration.
@@ -791,7 +791,7 @@ public:
      * @see https://github.com/tj/commander.js#custom-help
      * @since 0.1.0
      */
-    std::unordered_map<std::string, std::any> configureHelp() const;
+    std::map<std::string, polycpp::JsonValue> configureHelp() const;
 
     /**
      * @brief Configure output functions.
@@ -968,7 +968,7 @@ public:
 
     /// @brief Processed args (after custom processing, collecting variadics).
     /// @since 0.1.0
-    std::vector<std::any> processedArgs;
+    std::vector<polycpp::JsonValue> processedArgs;
 
     // --- Error reporting methods (public for test access) ---
 
@@ -1035,10 +1035,10 @@ private:
     void dispatchHelpCommand_(const std::string& subcommandName);
     void callHooks_(const std::string& event);
     void callSubCommandHook_(Command& subCommand, const std::string& event);
-    std::any callParseArg_(const Option& target, const std::string& value,
-                           const std::any& previous, const std::string& invalidArgMsg);
-    std::any callParseArg_(const Argument& target, const std::string& value,
-                           const std::any& previous, const std::string& invalidArgMsg);
+    polycpp::JsonValue callParseArg_(const Option& target, const std::string& value,
+                           const polycpp::JsonValue& previous, const std::string& invalidArgMsg);
+    polycpp::JsonValue callParseArg_(const Argument& target, const std::string& value,
+                           const polycpp::JsonValue& previous, const std::string& invalidArgMsg);
     void registerOption_(Option& option);
     void registerCommand_(Command& command);
     Command* findCommand_(const std::string& name);
@@ -1081,7 +1081,7 @@ private:
     OptionValueSources optionValueSources_;
 
     /// Internal action handler takes just processedArgs; action() wraps the user's ActionFn.
-    std::function<void(const std::vector<std::any>&)> actionHandler_;
+    std::function<void(const std::vector<polycpp::JsonValue>&)> actionHandler_;
     std::function<void(const CommanderError&)> exitCallback_;
 
     std::unordered_map<std::string, std::vector<HookFn>> lifeCycleHooks_;
@@ -1097,7 +1097,7 @@ private:
 
     std::string defaultCommandName_;
 
-    std::unordered_map<std::string, std::any> helpConfiguration_;
+    std::map<std::string, polycpp::JsonValue> helpConfiguration_;
 
     struct SavedState {
         std::string name;

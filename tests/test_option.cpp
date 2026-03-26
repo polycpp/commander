@@ -104,8 +104,6 @@ TEST(OptionTest, NameFromLongWithDash) {
 }
 
 TEST(OptionTest, NameFromNegateStripsNo) {
-    // name() for --no-color returns "no-color" (the full name after --)
-    // attributeName() strips the "no-" prefix
     Option opt("--no-color");
     EXPECT_EQ(opt.name(), "no-color");
 }
@@ -182,8 +180,8 @@ TEST(OptionTest, IsMatchesLong) {
 
 TEST(OptionTest, DefaultValueSetsValue) {
     Option opt("--color [value]");
-    opt.defaultValue(std::string("blue"), "favorite color");
-    EXPECT_EQ(std::any_cast<std::string>(opt.defaultValue_), "blue");
+    opt.defaultValue(polycpp::JsonValue("blue"), "favorite color");
+    EXPECT_EQ(opt.defaultValue_.asString(), "blue");
     EXPECT_EQ(opt.defaultValueDescription_, "favorite color");
 }
 
@@ -191,8 +189,8 @@ TEST(OptionTest, DefaultValueSetsValue) {
 
 TEST(OptionTest, PresetSetsValue) {
     Option opt("--color");
-    opt.preset(std::string("RGB"));
-    EXPECT_EQ(std::any_cast<std::string>(opt.presetArg_), "RGB");
+    opt.preset(polycpp::JsonValue("RGB"));
+    EXPECT_EQ(opt.presetArg_.asString(), "RGB");
 }
 
 // --- conflicts tests ---
@@ -225,16 +223,16 @@ TEST(OptionTest, ConflictsAccumulates) {
 
 TEST(OptionTest, ImpliesSetsValues) {
     Option opt("--trace");
-    opt.implies({{"log", std::any(std::string("trace.txt"))}});
+    opt.implies({{"log", polycpp::JsonValue("trace.txt")}});
     ASSERT_TRUE(opt.implied_.has_value());
     EXPECT_EQ(opt.implied_->size(), 1u);
-    EXPECT_EQ(std::any_cast<std::string>(opt.implied_->at("log")), "trace.txt");
+    EXPECT_EQ(opt.implied_->at("log").asString(), "trace.txt");
 }
 
 TEST(OptionTest, ImpliesMerges) {
     Option opt("--trace");
-    opt.implies({{"log", std::any(std::string("trace.txt"))}});
-    opt.implies({{"verbose", std::any(true)}});
+    opt.implies({{"log", polycpp::JsonValue("trace.txt")}});
+    opt.implies({{"verbose", polycpp::JsonValue(true)}});
     ASSERT_TRUE(opt.implied_.has_value());
     EXPECT_EQ(opt.implied_->size(), 2u);
 }
@@ -252,12 +250,12 @@ TEST(OptionTest, EnvSetsVariable) {
 
 TEST(OptionTest, ArgParserSetsFunction) {
     Option opt("--port <number>");
-    opt.argParser([](const std::string& value, const std::any&) -> std::any {
-        return std::stoi(value);
+    opt.argParser([](const std::string& value, const polycpp::JsonValue&) -> polycpp::JsonValue {
+        return polycpp::JsonValue(std::stoi(value));
     });
     EXPECT_TRUE(static_cast<bool>(opt.parseArg_));
-    auto result = opt.parseArg_("8080", std::any{});
-    EXPECT_EQ(std::any_cast<int>(result), 8080);
+    auto result = opt.parseArg_("8080", polycpp::JsonValue());
+    EXPECT_EQ(result.asInt(), 8080);
 }
 
 // --- makeOptionMandatory tests ---
@@ -304,27 +302,27 @@ TEST(OptionTest, ChoicesSetsValues) {
 TEST(OptionTest, ChoicesValidatorAcceptsValid) {
     Option opt("-s, --size <value>");
     opt.choices({"small", "medium", "large"});
-    auto result = opt.parseArg_("medium", std::any{});
-    EXPECT_EQ(std::any_cast<std::string>(result), "medium");
+    auto result = opt.parseArg_("medium", polycpp::JsonValue());
+    EXPECT_EQ(result.asString(), "medium");
 }
 
 TEST(OptionTest, ChoicesValidatorRejectsInvalid) {
     Option opt("-s, --size <value>");
     opt.choices({"small", "medium", "large"});
-    EXPECT_THROW(opt.parseArg_("huge", std::any{}), InvalidArgumentError);
+    EXPECT_THROW(opt.parseArg_("huge", polycpp::JsonValue()), InvalidArgumentError);
 }
 
 // --- Fluent chaining tests ---
 
 TEST(OptionTest, DefaultValueReturnsThis) {
     Option opt("-e, --example <value>");
-    Option& ref = opt.defaultValue(3);
+    Option& ref = opt.defaultValue(polycpp::JsonValue(3));
     EXPECT_EQ(&ref, &opt);
 }
 
 TEST(OptionTest, ArgParserReturnsThis) {
     Option opt("-e, --example <value>");
-    Option& ref = opt.argParser([](const std::string& v, const std::any&) -> std::any { return v; });
+    Option& ref = opt.argParser([](const std::string& v, const polycpp::JsonValue&) -> polycpp::JsonValue { return polycpp::JsonValue(v); });
     EXPECT_EQ(&ref, &opt);
 }
 
@@ -366,22 +364,20 @@ TEST(OptionTest, ConflictsStringReturnsThis) {
 
 TEST(OptionTest, PresetReturnsThis) {
     Option opt("-e, --example");
-    Option& ref = opt.preset(std::string("value"));
+    Option& ref = opt.preset(polycpp::JsonValue("value"));
     EXPECT_EQ(&ref, &opt);
 }
 
 TEST(OptionTest, ImpliesReturnsThis) {
     Option opt("-e, --example");
-    Option& ref = opt.implies({{"log", std::any(true)}});
+    Option& ref = opt.implies({{"log", polycpp::JsonValue(true)}});
     EXPECT_EQ(&ref, &opt);
 }
 
 // --- splitOptionFlags edge cases ---
 
 TEST(OptionTest, TwoLongFlags) {
-    // --ws, --workspace pattern
     Option opt("--ws, --workspace");
-    // short_ gets the first long flag, long_ gets the second
     ASSERT_TRUE(opt.short_.has_value());
     ASSERT_TRUE(opt.long_.has_value());
     EXPECT_EQ(*opt.short_, "--ws");
@@ -499,11 +495,11 @@ TEST(OptionTest, NonVariadic) {
 
 TEST(OptionTest, FluentChainComplete) {
     Option opt("-p, --port <number>");
-    opt.defaultValue(3000, "default port")
+    opt.defaultValue(polycpp::JsonValue(3000), "default port")
        .env("PORT")
        .makeOptionMandatory()
-       .argParser([](const std::string& value, const std::any&) -> std::any {
-           return std::stoi(value);
+       .argParser([](const std::string& value, const polycpp::JsonValue&) -> polycpp::JsonValue {
+           return polycpp::JsonValue(std::stoi(value));
        })
        .hideHelp(false);
 
@@ -511,5 +507,5 @@ TEST(OptionTest, FluentChainComplete) {
     EXPECT_FALSE(opt.hidden);
     ASSERT_TRUE(opt.envVar_.has_value());
     EXPECT_EQ(*opt.envVar_, "PORT");
-    EXPECT_EQ(std::any_cast<int>(opt.defaultValue_), 3000);
+    EXPECT_EQ(opt.defaultValue_.asInt(), 3000);
 }

@@ -218,7 +218,7 @@ TEST(HelpTest, OptionDescriptionWithChoices) {
 
 TEST(HelpTest, OptionDescriptionWithDefault) {
     Option opt("-p, --port <number>", "port number");
-    opt.defaultValue(std::any(std::string("3000")));
+    opt.defaultValue(polycpp::JsonValue("3000"));
 
     Help help;
     auto desc = help.optionDescription(opt);

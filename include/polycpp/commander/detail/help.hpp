@@ -13,6 +13,8 @@
 #include <polycpp/commander/help.hpp>
 #include <polycpp/commander/command.hpp>
 
+#include <polycpp/core/json.hpp>
+
 #include <algorithm>
 #include <regex>
 #include <sstream>
@@ -206,37 +208,39 @@ inline std::string Help::optionDescription(const Option& option) const {
         extraInfo.push_back(choicesStr);
     }
 
-    if (option.defaultValue_.has_value()) {
+    if (!option.defaultValue_.isNull()) {
         bool showDefault = option.required || option.optional ||
-                           (option.isBoolean() &&
-                            option.defaultValue_.type() == typeid(bool));
+                           (option.isBoolean() && option.defaultValue_.isBool());
         if (showDefault) {
             std::string defStr;
             if (!option.defaultValueDescription_.empty()) {
                 defStr = option.defaultValueDescription_;
-            } else if (option.defaultValue_.type() == typeid(std::string)) {
-                defStr = "\"" + std::any_cast<std::string>(option.defaultValue_) + "\"";
-            } else if (option.defaultValue_.type() == typeid(bool)) {
-                defStr = std::any_cast<bool>(option.defaultValue_) ? "true" : "false";
-            } else if (option.defaultValue_.type() == typeid(int)) {
-                defStr = std::to_string(std::any_cast<int>(option.defaultValue_));
-            } else if (option.defaultValue_.type() == typeid(double)) {
-                defStr = std::to_string(std::any_cast<double>(option.defaultValue_));
+            } else if (option.defaultValue_.isString()) {
+                defStr = "\"" + option.defaultValue_.asString() + "\"";
+            } else if (option.defaultValue_.isBool()) {
+                defStr = option.defaultValue_.asBool() ? "true" : "false";
+            } else if (option.defaultValue_.isNumber()) {
+                double num = option.defaultValue_.asNumber();
+                if (num == static_cast<int>(num)) {
+                    defStr = std::to_string(static_cast<int>(num));
+                } else {
+                    defStr = std::to_string(num);
+                }
             } else {
-                defStr = "(complex)";
+                defStr = polycpp::JSON::stringify(option.defaultValue_);
             }
             extraInfo.push_back("default: " + defStr);
         }
     }
 
-    if (option.presetArg_.has_value() && option.optional) {
+    if (!option.presetArg_.isNull() && option.optional) {
         std::string presetStr;
-        if (option.presetArg_.type() == typeid(std::string)) {
-            presetStr = "\"" + std::any_cast<std::string>(option.presetArg_) + "\"";
-        } else if (option.presetArg_.type() == typeid(bool)) {
-            presetStr = std::any_cast<bool>(option.presetArg_) ? "true" : "false";
+        if (option.presetArg_.isString()) {
+            presetStr = "\"" + option.presetArg_.asString() + "\"";
+        } else if (option.presetArg_.isBool()) {
+            presetStr = option.presetArg_.asBool() ? "true" : "false";
         } else {
-            presetStr = "(value)";
+            presetStr = polycpp::JSON::stringify(option.presetArg_);
         }
         extraInfo.push_back("preset: " + presetStr);
     }
@@ -277,16 +281,21 @@ inline std::string Help::argumentDescription(const Argument& argument) const {
         extraInfo.push_back(choicesStr);
     }
 
-    if (argument.defaultValue_.has_value()) {
+    if (!argument.defaultValue_.isNull()) {
         std::string defStr;
         if (!argument.defaultValueDescription_.empty()) {
             defStr = argument.defaultValueDescription_;
-        } else if (argument.defaultValue_.type() == typeid(std::string)) {
-            defStr = "\"" + std::any_cast<std::string>(argument.defaultValue_) + "\"";
-        } else if (argument.defaultValue_.type() == typeid(int)) {
-            defStr = std::to_string(std::any_cast<int>(argument.defaultValue_));
+        } else if (argument.defaultValue_.isString()) {
+            defStr = "\"" + argument.defaultValue_.asString() + "\"";
+        } else if (argument.defaultValue_.isNumber()) {
+            double num = argument.defaultValue_.asNumber();
+            if (num == static_cast<int>(num)) {
+                defStr = std::to_string(static_cast<int>(num));
+            } else {
+                defStr = std::to_string(num);
+            }
         } else {
-            defStr = "(complex)";
+            defStr = polycpp::JSON::stringify(argument.defaultValue_);
         }
         extraInfo.push_back("default: " + defStr);
     }

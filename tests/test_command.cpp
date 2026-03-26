@@ -61,7 +61,7 @@ TEST(CommandTest, BooleanOption) {
     cmd.option("-v, --verbose", "enable verbose output");
     parseUser(cmd, {"--verbose"});
     auto o = cmd.opts();
-    EXPECT_TRUE(std::any_cast<bool>(o["verbose"]));
+    EXPECT_TRUE(o["verbose"].asBool());
 }
 
 TEST(CommandTest, BooleanOptionShort) {
@@ -70,7 +70,7 @@ TEST(CommandTest, BooleanOptionShort) {
     cmd.option("-v, --verbose", "enable verbose output");
     parseUser(cmd, {"-v"});
     auto o = cmd.opts();
-    EXPECT_TRUE(std::any_cast<bool>(o["verbose"]));
+    EXPECT_TRUE(o["verbose"].asBool());
 }
 
 TEST(CommandTest, OptionWithRequiredValue) {
@@ -79,7 +79,7 @@ TEST(CommandTest, OptionWithRequiredValue) {
     cmd.option("-n, --name <value>", "your name");
     parseUser(cmd, {"--name", "Alice"});
     auto o = cmd.opts();
-    EXPECT_EQ(std::any_cast<std::string>(o["name"]), "Alice");
+    EXPECT_EQ(o["name"].asString(), "Alice");
 }
 
 TEST(CommandTest, OptionWithEqualsValue) {
@@ -88,7 +88,7 @@ TEST(CommandTest, OptionWithEqualsValue) {
     cmd.option("-n, --name <value>", "your name");
     parseUser(cmd, {"--name=Alice"});
     auto o = cmd.opts();
-    EXPECT_EQ(std::any_cast<std::string>(o["name"]), "Alice");
+    EXPECT_EQ(o["name"].asString(), "Alice");
 }
 
 TEST(CommandTest, CombinedShortFlags) {
@@ -99,9 +99,9 @@ TEST(CommandTest, CombinedShortFlags) {
     cmd.option("-c", "flag c");
     parseUser(cmd, {"-abc"});
     auto o = cmd.opts();
-    EXPECT_TRUE(std::any_cast<bool>(o["a"]));
-    EXPECT_TRUE(std::any_cast<bool>(o["b"]));
-    EXPECT_TRUE(std::any_cast<bool>(o["c"]));
+    EXPECT_TRUE(o["a"].asBool());
+    EXPECT_TRUE(o["b"].asBool());
+    EXPECT_TRUE(o["c"].asBool());
 }
 
 TEST(CommandTest, NegateOption) {
@@ -110,7 +110,7 @@ TEST(CommandTest, NegateOption) {
     cmd.option("--no-color", "disable color");
     parseUser(cmd, {"--no-color"});
     auto o = cmd.opts();
-    EXPECT_FALSE(std::any_cast<bool>(o["color"]));
+    EXPECT_FALSE(o["color"].asBool());
 }
 
 TEST(CommandTest, NegateOptionDefault) {
@@ -120,16 +120,16 @@ TEST(CommandTest, NegateOptionDefault) {
     parseUser(cmd, {});
     auto o = cmd.opts();
     // Default for --no-color is true (the positive)
-    EXPECT_TRUE(std::any_cast<bool>(o["color"]));
+    EXPECT_TRUE(o["color"].asBool());
 }
 
 TEST(CommandTest, DefaultOptionValue) {
     Command cmd;
     cmd.exitOverride();
-    cmd.option("-p, --port <number>", "port number", std::any(std::string("3000")));
+    cmd.option("-p, --port <number>", "port number", polycpp::JsonValue("3000"));
     parseUser(cmd, {});
     auto o = cmd.opts();
-    EXPECT_EQ(std::any_cast<std::string>(o["port"]), "3000");
+    EXPECT_EQ(o["port"].asString(), "3000");
 }
 
 TEST(CommandTest, VariadicOption) {
@@ -138,11 +138,12 @@ TEST(CommandTest, VariadicOption) {
     cmd.option("-f, --files <values...>", "input files");
     parseUser(cmd, {"--files", "a.txt", "b.txt", "c.txt"});
     auto o = cmd.opts();
-    auto files = std::any_cast<std::vector<std::string>>(o["files"]);
+    ASSERT_TRUE(o["files"].isArray());
+    auto& files = o["files"].asArray();
     ASSERT_EQ(files.size(), 3u);
-    EXPECT_EQ(files[0], "a.txt");
-    EXPECT_EQ(files[1], "b.txt");
-    EXPECT_EQ(files[2], "c.txt");
+    EXPECT_EQ(files[0].asString(), "a.txt");
+    EXPECT_EQ(files[1].asString(), "b.txt");
+    EXPECT_EQ(files[2].asString(), "c.txt");
 }
 
 TEST(CommandTest, RequiredOptionPresent) {
@@ -151,7 +152,7 @@ TEST(CommandTest, RequiredOptionPresent) {
     cmd.requiredOption("-c, --cheese <type>", "pizza cheese type");
     parseUser(cmd, {"--cheese", "mozzarella"});
     auto o = cmd.opts();
-    EXPECT_EQ(std::any_cast<std::string>(o["cheese"]), "mozzarella");
+    EXPECT_EQ(o["cheese"].asString(), "mozzarella");
 }
 
 TEST(CommandTest, RequiredOptionMissing) {
@@ -175,13 +176,13 @@ TEST(CommandTest, OptionMissingArgument) {
 TEST(CommandTest, OptionCustomParser) {
     Command cmd;
     cmd.exitOverride();
-    ParseFn parser = [](const std::string& v, const std::any&) -> std::any {
-        return std::any(std::stoi(v));
+    ParseFn parser = [](const std::string& v, const polycpp::JsonValue&) -> polycpp::JsonValue {
+        return polycpp::JsonValue(std::stoi(v));
     };
     cmd.option("-p, --port <number>", "port number", parser);
     parseUser(cmd, {"--port", "3000"});
     auto o = cmd.opts();
-    EXPECT_EQ(std::any_cast<int>(o["port"]), 3000);
+    EXPECT_EQ(o["port"].asInt(), 3000);
 }
 
 TEST(CommandTest, OptionChoicesValid) {
@@ -192,7 +193,7 @@ TEST(CommandTest, OptionChoicesValid) {
     cmd.addOption(std::move(opt));
     parseUser(cmd, {"--size", "medium"});
     auto o = cmd.opts();
-    EXPECT_EQ(std::any_cast<std::string>(o["size"]), "medium");
+    EXPECT_EQ(o["size"].asString(), "medium");
 }
 
 TEST(CommandTest, OptionChoicesInvalid) {
@@ -222,25 +223,25 @@ TEST(CommandTest, OptionImplied) {
     Command cmd;
     cmd.exitOverride();
     auto opt = Option("-v, --verbose", "verbose");
-    opt.implies({{"logLevel", std::any(std::string("debug"))}});
+    opt.implies({{"logLevel", polycpp::JsonValue("debug")}});
     cmd.addOption(std::move(opt));
-    cmd.option("--log-level <level>", "log level", std::any(std::string("info")));
+    cmd.option("--log-level <level>", "log level", polycpp::JsonValue("info"));
     parseUser(cmd, {"--verbose"});
     auto o = cmd.opts();
-    EXPECT_EQ(std::any_cast<std::string>(o["logLevel"]), "debug");
+    EXPECT_EQ(o["logLevel"].asString(), "debug");
 }
 
 TEST(CommandTest, OptionPreset) {
     Command cmd;
     cmd.exitOverride();
     auto opt = Option("--color [when]", "use color");
-    opt.defaultValue(std::any(std::string("auto")));
-    opt.preset(std::any(std::string("always")));
+    opt.defaultValue(polycpp::JsonValue("auto"));
+    opt.preset(polycpp::JsonValue("always"));
     cmd.addOption(std::move(opt));
     // Without option-argument, preset value should be used
     parseUser(cmd, {"--color"});
     auto o = cmd.opts();
-    EXPECT_EQ(std::any_cast<std::string>(o["color"]), "always");
+    EXPECT_EQ(o["color"].asString(), "always");
 }
 
 // ============ Arguments ============
@@ -249,8 +250,8 @@ TEST(CommandTest, PositionalArgument) {
     Command cmd;
     cmd.exitOverride();
     cmd.argument("<file>", "input file");
-    cmd.action([](auto& args, auto&, auto&) {
-        EXPECT_EQ(std::any_cast<std::string>(args[0]), "test.txt");
+    cmd.action([](const std::vector<polycpp::JsonValue>& args, const polycpp::JsonValue&, Command&) {
+        EXPECT_EQ(args[0].asString(), "test.txt");
     });
     parseUser(cmd, {"test.txt"});
 }
@@ -259,7 +260,7 @@ TEST(CommandTest, MissingRequiredArgument) {
     Command cmd;
     cmd.exitOverride();
     cmd.argument("<file>", "input file");
-    cmd.action([](auto&, auto&, auto&) {});
+    cmd.action([](const std::vector<polycpp::JsonValue>&, const polycpp::JsonValue&, Command&) {});
     EXPECT_THROW({
         parseUser(cmd, {});
     }, CommanderError);
@@ -269,12 +270,13 @@ TEST(CommandTest, VariadicArgument) {
     Command cmd;
     cmd.exitOverride();
     cmd.argument("<files...>", "input files");
-    cmd.action([](auto& args, auto&, auto&) {
-        auto files = std::any_cast<std::vector<std::string>>(args[0]);
+    cmd.action([](const std::vector<polycpp::JsonValue>& args, const polycpp::JsonValue&, Command&) {
+        ASSERT_TRUE(args[0].isArray());
+        auto& files = args[0].asArray();
         ASSERT_EQ(files.size(), 3u);
-        EXPECT_EQ(files[0], "a.txt");
-        EXPECT_EQ(files[1], "b.txt");
-        EXPECT_EQ(files[2], "c.txt");
+        EXPECT_EQ(files[0].asString(), "a.txt");
+        EXPECT_EQ(files[1].asString(), "b.txt");
+        EXPECT_EQ(files[2].asString(), "c.txt");
     });
     parseUser(cmd, {"a.txt", "b.txt", "c.txt"});
 }
@@ -283,7 +285,7 @@ TEST(CommandTest, ExcessArguments) {
     Command cmd;
     cmd.exitOverride();
     cmd.argument("<file>", "input file");
-    cmd.action([](auto&, auto&, auto&) {});
+    cmd.action([](const std::vector<polycpp::JsonValue>&, const polycpp::JsonValue&, Command&) {});
     EXPECT_THROW({
         parseUser(cmd, {"a.txt", "b.txt"});
     }, CommanderError);
@@ -294,7 +296,7 @@ TEST(CommandTest, AllowExcessArguments) {
     cmd.exitOverride();
     cmd.argument("<file>", "input file");
     cmd.allowExcessArguments();
-    cmd.action([](auto&, auto&, auto&) {});
+    cmd.action([](const std::vector<polycpp::JsonValue>&, const polycpp::JsonValue&, Command&) {});
     EXPECT_NO_THROW(parseUser(cmd, {"a.txt", "b.txt"}));
 }
 
@@ -302,9 +304,9 @@ TEST(CommandTest, ArgumentsFromString) {
     Command cmd;
     cmd.exitOverride();
     cmd.arguments("<source> [destination]");
-    cmd.action([](auto& args, auto&, auto&) {
-        EXPECT_EQ(std::any_cast<std::string>(args[0]), "src");
-        EXPECT_EQ(std::any_cast<std::string>(args[1]), "dst");
+    cmd.action([](const std::vector<polycpp::JsonValue>& args, const polycpp::JsonValue&, Command&) {
+        EXPECT_EQ(args[0].asString(), "src");
+        EXPECT_EQ(args[1].asString(), "dst");
     });
     parseUser(cmd, {"src", "dst"});
 }
@@ -317,7 +319,7 @@ TEST(CommandTest, SubcommandDispatch) {
     bool called = false;
     cmd.command("serve")
        .description("start server")
-       .action([&](auto&, auto&, auto&) { called = true; });
+       .action([&](const std::vector<polycpp::JsonValue>&, const polycpp::JsonValue&, Command&) { called = true; });
     parseUser(cmd, {"serve"});
     EXPECT_TRUE(called);
 }
@@ -328,8 +330,8 @@ TEST(CommandTest, SubcommandWithArgs) {
     std::string capturedSrc;
     cmd.command("clone <source> [destination]")
        .description("clone a repo")
-       .action([&](auto& args, auto&, auto&) {
-           capturedSrc = std::any_cast<std::string>(args[0]);
+       .action([&](const std::vector<polycpp::JsonValue>& args, const polycpp::JsonValue&, Command&) {
+           capturedSrc = args[0].asString();
        });
     parseUser(cmd, {"clone", "https://example.com/repo"});
     EXPECT_EQ(capturedSrc, "https://example.com/repo");
@@ -341,8 +343,8 @@ TEST(CommandTest, SubcommandWithOption) {
     int capturedPort = 0;
     cmd.command("serve")
        .option("-p, --port <number>", "port")
-       .action([&](auto&, auto& opts, auto&) {
-           capturedPort = std::stoi(std::any_cast<std::string>(opts.at("port")));
+       .action([&](const std::vector<polycpp::JsonValue>&, const polycpp::JsonValue& opts, Command&) {
+           capturedPort = std::stoi(opts.asObject().at("port").asString());
        });
     parseUser(cmd, {"serve", "--port", "3000"});
     EXPECT_EQ(capturedPort, 3000);
@@ -354,7 +356,7 @@ TEST(CommandTest, SubcommandAlias) {
     bool called = false;
     cmd.command("install")
        .alias("i")
-       .action([&](auto&, auto&, auto&) { called = true; });
+       .action([&](const std::vector<polycpp::JsonValue>&, const polycpp::JsonValue&, Command&) { called = true; });
     parseUser(cmd, {"i"});
     EXPECT_TRUE(called);
 }
@@ -362,7 +364,7 @@ TEST(CommandTest, SubcommandAlias) {
 TEST(CommandTest, UnknownCommand) {
     Command cmd;
     cmd.exitOverride();
-    cmd.command("serve").action([](auto&, auto&, auto&) {});
+    cmd.command("serve").action([](const std::vector<polycpp::JsonValue>&, const polycpp::JsonValue&, Command&) {});
     EXPECT_THROW({
         parseUser(cmd, {"strat"});
     }, CommanderError);
@@ -371,7 +373,7 @@ TEST(CommandTest, UnknownCommand) {
 TEST(CommandTest, UnknownCommandWithSuggestion) {
     Command cmd;
     cmd.exitOverride();
-    cmd.command("serve").action([](auto&, auto&, auto&) {});
+    cmd.command("serve").action([](const std::vector<polycpp::JsonValue>&, const polycpp::JsonValue&, Command&) {});
     try {
         parseUser(cmd, {"serv"});
         FAIL() << "Expected CommanderError";
@@ -389,10 +391,10 @@ TEST(CommandTest, ActionReceivesArgsOptsCmd) {
     cmd.argument("<name>", "name");
     cmd.option("-v, --verbose", "verbose");
     bool actionCalled = false;
-    cmd.action([&](auto& args, auto& opts, auto& command) {
+    cmd.action([&](const std::vector<polycpp::JsonValue>& args, const polycpp::JsonValue& opts, Command& command) {
         actionCalled = true;
-        EXPECT_EQ(std::any_cast<std::string>(args[0]), "Alice");
-        EXPECT_TRUE(std::any_cast<bool>(opts.at("verbose")));
+        EXPECT_EQ(args[0].asString(), "Alice");
+        EXPECT_TRUE(opts.asObject().at("verbose").asBool());
         EXPECT_EQ(command.name(), "program");
     });
     parseUser(cmd, {"--verbose", "Alice"});
@@ -417,7 +419,7 @@ TEST(CommandTest, ExitOverrideThrowsCommanderError) {
 TEST(CommandTest, UnknownOption) {
     Command cmd;
     cmd.exitOverride();
-    cmd.action([](auto&, auto&, auto&) {});
+    cmd.action([](const std::vector<polycpp::JsonValue>&, const polycpp::JsonValue&, Command&) {});
     try {
         parseUser(cmd, {"--unknown"});
         FAIL() << "Expected CommanderError";
@@ -432,7 +434,7 @@ TEST(CommandTest, AllowUnknownOption) {
     cmd.allowUnknownOption();
     cmd.allowExcessArguments();
     cmd.helpOption(false);  // disable help so --unknown doesn't trigger help
-    cmd.action([](auto&, auto&, auto&) {});
+    cmd.action([](const std::vector<polycpp::JsonValue>&, const polycpp::JsonValue&, Command&) {});
     EXPECT_NO_THROW(parseUser(cmd, {"--unknown"}));
 }
 
@@ -519,9 +521,7 @@ TEST(CommandTest, HelpOptionDisabled) {
     cmd.helpOption(false);
     cmd.allowUnknownOption();
     cmd.allowExcessArguments();
-    cmd.action([](auto&, auto&, auto&) {});
-    // --help should be treated as unknown option since help is disabled
-    // With allowUnknownOption + allowExcessArguments, it should not throw
+    cmd.action([](const std::vector<polycpp::JsonValue>&, const polycpp::JsonValue&, Command&) {});
     EXPECT_NO_THROW(parseUser(cmd, {"--help"}));
 }
 
@@ -546,7 +546,7 @@ TEST(CommandTest, PreActionHook) {
     cmd.exitOverride();
     std::vector<std::string> order;
     cmd.hook("preAction", [&](auto&, auto&) { order.push_back("pre"); });
-    cmd.action([&](auto&, auto&, auto&) { order.push_back("action"); });
+    cmd.action([&](const std::vector<polycpp::JsonValue>&, const polycpp::JsonValue&, Command&) { order.push_back("action"); });
     parseUser(cmd, {});
     ASSERT_EQ(order.size(), 2u);
     EXPECT_EQ(order[0], "pre");
@@ -558,7 +558,7 @@ TEST(CommandTest, PostActionHook) {
     cmd.exitOverride();
     std::vector<std::string> order;
     cmd.hook("postAction", [&](auto&, auto&) { order.push_back("post"); });
-    cmd.action([&](auto&, auto&, auto&) { order.push_back("action"); });
+    cmd.action([&](const std::vector<polycpp::JsonValue>&, const polycpp::JsonValue&, Command&) { order.push_back("action"); });
     parseUser(cmd, {});
     ASSERT_EQ(order.size(), 2u);
     EXPECT_EQ(order[0], "action");
@@ -581,10 +581,7 @@ TEST(CommandTest, PassThroughOptions) {
     cmd.command("serve")
        .passThroughOptions()
        .option("-p, --port <number>", "port")
-       .action([](auto& args, auto& opts, auto& c) {
-           // args from passthrough should include unknown options
-       });
-    // Just verify it doesn't throw
+       .action([](const std::vector<polycpp::JsonValue>&, const polycpp::JsonValue&, Command&) {});
     parseUser(cmd, {"serve", "-p", "3000"});
 }
 
@@ -597,12 +594,12 @@ TEST(CommandTest, OptsWithGlobals) {
     int captured = 0;
     cmd.command("serve")
        .option("-p, --port <number>", "port")
-       .action([&](auto&, auto&, auto& c) {
+       .action([&](const std::vector<polycpp::JsonValue>&, const polycpp::JsonValue&, Command& c) {
            auto allOpts = c.optsWithGlobals();
-           if (allOpts.count("verbose") && allOpts["verbose"].has_value()) {
+           if (allOpts.hasKey("verbose") && !allOpts["verbose"].isNull()) {
                captured++;
            }
-           if (allOpts.count("port") && allOpts["port"].has_value()) {
+           if (allOpts.hasKey("port") && !allOpts["port"].isNull()) {
                captured++;
            }
        });
@@ -616,10 +613,10 @@ TEST(CommandTest, ParseNodeFormat) {
     Command cmd;
     cmd.exitOverride();
     cmd.option("-v, --verbose", "verbose");
-    cmd.action([](auto&, auto&, auto&) {});
+    cmd.action([](const std::vector<polycpp::JsonValue>&, const polycpp::JsonValue&, Command&) {});
     cmd.parse({"node", "app.js", "--verbose"});
     auto o = cmd.opts();
-    EXPECT_TRUE(std::any_cast<bool>(o["verbose"]));
+    EXPECT_TRUE(o["verbose"].asBool());
 }
 
 // ============ CopyInheritedSettings ============
@@ -631,9 +628,6 @@ TEST(CommandTest, CopyInheritedSettings) {
 
     Command child("sub");
     child.copyInheritedSettings(parent);
-    // The child should have the same settings
-    // We verify by checking it doesn't throw for unknown command suggestion
-    // (since suggestions are disabled)
 }
 
 // ============ Alias ============
@@ -677,7 +671,6 @@ TEST(CommandTest, NameFromFilenameNoExtension) {
 TEST(CommandTest, ShowHelpAfterErrorString) {
     Command cmd;
     cmd.exitOverride();
-    // Use std::string to ensure the string overload is called (not bool)
     cmd.showHelpAfterError(std::string("(use --help for help)"));
     cmd.option("-n, --name <value>", "name");
 
@@ -695,12 +688,11 @@ TEST(CommandTest, ConfigureHelpSortOptions) {
     Command cmd;
     cmd.exitOverride();
     cmd.name("myapp");
-    cmd.configureHelp({{"sortOptions", std::any(true)}});
+    cmd.configureHelp({{"sortOptions", polycpp::JsonValue(true)}});
     cmd.option("-z, --zeta", "zeta option");
     cmd.option("-a, --alpha", "alpha option");
 
     auto helpText = cmd.helpInformation();
-    // Alpha should appear before zeta when sorted
     auto alphaPos = helpText.find("--alpha");
     auto zetaPos = helpText.find("--zeta");
     EXPECT_LT(alphaPos, zetaPos);
@@ -712,7 +704,7 @@ TEST(CommandTest, ShowSuggestionDisabled) {
     Command cmd;
     cmd.exitOverride();
     cmd.showSuggestionAfterError(false);
-    cmd.command("serve").action([](auto&, auto&, auto&) {});
+    cmd.command("serve").action([](const std::vector<polycpp::JsonValue>&, const polycpp::JsonValue&, Command&) {});
     try {
         parseUser(cmd, {"serv"});
         FAIL();
@@ -726,32 +718,30 @@ TEST(CommandTest, ShowSuggestionDisabled) {
 
 TEST(CommandTest, GetSetOptionValue) {
     Command cmd;
-    cmd.setOptionValue("foo", std::any(std::string("bar")));
+    cmd.setOptionValue("foo", polycpp::JsonValue("bar"));
     auto val = cmd.getOptionValue("foo");
-    EXPECT_EQ(std::any_cast<std::string>(val), "bar");
+    EXPECT_EQ(val.asString(), "bar");
 }
 
 TEST(CommandTest, GetOptionValueSource) {
     Command cmd;
-    cmd.setOptionValueWithSource("foo", std::any(42), "cli");
+    cmd.setOptionValueWithSource("foo", polycpp::JsonValue(42), "cli");
     EXPECT_EQ(cmd.getOptionValueSource("foo"), "cli");
 }
 
-// ============ Doublr-dash terminates options ============
+// ============ Double-dash terminates options ============
 
 TEST(CommandTest, DoubleDashTerminatesOptions) {
     Command cmd;
     cmd.exitOverride();
     cmd.option("-v, --verbose", "verbose");
     cmd.argument("[args...]", "remaining args");
-    cmd.action([](auto& args, auto& opts, auto&) {
-        // --verbose after -- should be treated as argument, not option
-    });
+    cmd.action([](const std::vector<polycpp::JsonValue>&, const polycpp::JsonValue&, Command&) {});
     parseUser(cmd, {"--", "--verbose"});
     auto o = cmd.opts();
     // verbose should NOT be set (it was after --)
-    EXPECT_FALSE(o.count("verbose") && o["verbose"].has_value() &&
-                 o["verbose"].type() == typeid(bool) && std::any_cast<bool>(o["verbose"]));
+    EXPECT_TRUE(!o.hasKey("verbose") || o["verbose"].isNull() ||
+                (o["verbose"].isBool() && !o["verbose"].asBool()));
 }
 
 // ============ Help Subcommand ============
@@ -760,13 +750,12 @@ TEST(CommandTest, HelpCommandShowsRootHelpWhenNoSubcommand) {
     Command cmd;
     cmd.exitOverride();
     cmd.name("myapp");
-    cmd.command("sub1").action([](auto&, auto&, auto&) {});
+    cmd.command("sub1").action([](const std::vector<polycpp::JsonValue>&, const polycpp::JsonValue&, Command&) {});
     std::string captured;
     cmd.configureOutput({.writeOut = [&](const std::string& s) { captured += s; }});
     try {
         parseUser(cmd, {"help"});
     } catch (const CommanderError& e) {
-        // help exits via exit_ which throws with exitOverride
     }
     EXPECT_NE(captured.find("Usage:"), std::string::npos);
     EXPECT_NE(captured.find("myapp"), std::string::npos);
@@ -792,9 +781,8 @@ TEST(CommandTest, HelpCommandDisabledWithFalse) {
     cmd.exitOverride();
     cmd.name("myapp");
     cmd.helpCommand(false);
-    cmd.command("foo").action([](auto&, auto&, auto&) {});
+    cmd.command("foo").action([](const std::vector<polycpp::JsonValue>&, const polycpp::JsonValue&, Command&) {});
     auto helpText = cmd.helpInformation();
-    // "help [command]" should not appear in help output
     EXPECT_EQ(helpText.find("help [command]"), std::string::npos);
 }
 
@@ -812,10 +800,9 @@ TEST(CommandTest, HelpCommandNotAddedWhenRootHasAction) {
     Command cmd;
     cmd.exitOverride();
     cmd.name("myapp");
-    cmd.command("sub1").action([](auto&, auto&, auto&) {});
-    cmd.action([](auto&, auto&, auto&) {});
+    cmd.command("sub1").action([](const std::vector<polycpp::JsonValue>&, const polycpp::JsonValue&, Command&) {});
+    cmd.action([](const std::vector<polycpp::JsonValue>&, const polycpp::JsonValue&, Command&) {});
     auto helpText = cmd.helpInformation();
-    // When root has action, implicit help command is NOT added
     EXPECT_EQ(helpText.find("help [command]"), std::string::npos);
 }
 
@@ -854,12 +841,10 @@ TEST(CommandTest, AddHelpCommandWithCustomObject) {
 }
 
 TEST(CommandTest, HelpCommandDispatchesUnknownSubcommand) {
-    // When "help unknown" is called, it should dispatch to the unknown subcommand
-    // which will cause help to be shown (via --help flag fallback)
     Command cmd;
     cmd.exitOverride();
     cmd.name("myapp");
-    cmd.command("sub1").action([](auto&, auto&, auto&) {});
+    cmd.command("sub1").action([](const std::vector<polycpp::JsonValue>&, const polycpp::JsonValue&, Command&) {});
     std::string errCaptured;
     cmd.configureOutput({
         .writeOut = [](const std::string&) {},
@@ -869,7 +854,6 @@ TEST(CommandTest, HelpCommandDispatchesUnknownSubcommand) {
         parseUser(cmd, {"help", "unknown"});
     } catch (const CommanderError&) {
     }
-    // Should have tried to dispatch to "unknown" and generated an error/help
 }
 
 TEST(CommandTest, HelpCommandInheritedBySubcommand) {
@@ -879,8 +863,7 @@ TEST(CommandTest, HelpCommandInheritedBySubcommand) {
     cmd.helpCommand(false);
 
     auto& sub = cmd.command("sub1");
-    sub.command("nested").action([](auto&, auto&, auto&) {});
-    // Sub should inherit addImplicitHelpCommand_=false
+    sub.command("nested").action([](const std::vector<polycpp::JsonValue>&, const polycpp::JsonValue&, Command&) {});
     auto helpText = sub.helpInformation();
     EXPECT_EQ(helpText.find("help [command]"), std::string::npos);
 }
@@ -898,7 +881,7 @@ TEST(CommandTest, ExecutableSubcommandReturnsThis) {
     Command cmd("myapp");
     cmd.exitOverride();
     auto& ret = cmd.executableCommand("install", "install packages");
-    EXPECT_EQ(&ret, &cmd);  // Returns *this, not new subcommand
+    EXPECT_EQ(&ret, &cmd);
 }
 
 TEST(CommandTest, ExecutableSubcommandDir) {
@@ -926,7 +909,6 @@ TEST(CommandTest, ExecutableSubcommandNotFound) {
 }
 
 TEST(CommandTest, ExecutableSubcommandRun) {
-    // Create a temp script that writes a marker file
     std::string marker = "/tmp/commander-exec-test-" + std::to_string(getpid());
     std::string script = "/tmp/myapp-runcmd";
     {
@@ -947,7 +929,6 @@ TEST(CommandTest, ExecutableSubcommandRun) {
 }
 
 TEST(CommandTest, ExecutableSubcommandPassesArgs) {
-    // Create a script that writes its args to a file
     std::string output = "/tmp/commander-args-test-" + std::to_string(getpid());
     std::string script = "/tmp/myapp-argcmd";
     {
@@ -962,7 +943,6 @@ TEST(CommandTest, ExecutableSubcommandPassesArgs) {
     cmd.executableCommand("argcmd", "test args");
     cmd.parse({"argcmd", "hello", "world"}, {.from = "user"});
 
-    // Read back the output
     std::ifstream in(output);
     std::string content;
     std::getline(in, content);
@@ -982,7 +962,6 @@ TEST(CommandTest, ExecutableSubcommandInHelp) {
 }
 
 TEST(CommandTest, ExecutableSubcommandCustomExecutable) {
-    // Create a temp script with a custom name
     std::string marker = "/tmp/commander-custom-exec-test-" + std::to_string(getpid());
     std::string script = "/tmp/my-custom-installer";
     {
@@ -1003,7 +982,6 @@ TEST(CommandTest, ExecutableSubcommandCustomExecutable) {
 }
 
 TEST(CommandTest, ExecutableSubcommandExitCode) {
-    // Create a script that exits with non-zero
     std::string script = "/tmp/myapp-failcmd";
     {
         std::ofstream f(script);
@@ -1027,7 +1005,6 @@ TEST(CommandTest, ExecutableSubcommandExitCode) {
 }
 
 TEST(CommandTest, ExecutableSubcommandWithArguments) {
-    // executableCommand can define arguments like command()
     Command cmd("myapp");
     cmd.exitOverride();
     cmd.executableCommand("install <pkg>", "install a package");

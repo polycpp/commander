@@ -54,21 +54,21 @@ TEST(ArgumentTest, EmptyDescription) {
 
 TEST(ArgumentTest, DefaultValueString) {
     Argument arg("[color]");
-    arg.defaultValue(std::string("blue"), "favorite color");
-    EXPECT_EQ(std::any_cast<std::string>(arg.defaultValue_), "blue");
+    arg.defaultValue(polycpp::JsonValue("blue"), "favorite color");
+    EXPECT_EQ(arg.defaultValue_.asString(), "blue");
     EXPECT_EQ(arg.defaultValueDescription_, "favorite color");
 }
 
 TEST(ArgumentTest, DefaultValueInt) {
     Argument arg("[count]");
-    arg.defaultValue(42);
-    EXPECT_EQ(std::any_cast<int>(arg.defaultValue_), 42);
+    arg.defaultValue(polycpp::JsonValue(42));
+    EXPECT_EQ(arg.defaultValue_.asInt(), 42);
 }
 
 TEST(ArgumentTest, DefaultValueNoDescription) {
     Argument arg("[name]");
-    arg.defaultValue(std::string("world"));
-    EXPECT_EQ(std::any_cast<std::string>(arg.defaultValue_), "world");
+    arg.defaultValue(polycpp::JsonValue("world"));
+    EXPECT_EQ(arg.defaultValue_.asString(), "world");
     EXPECT_EQ(arg.defaultValueDescription_, "");
 }
 
@@ -76,12 +76,12 @@ TEST(ArgumentTest, DefaultValueNoDescription) {
 
 TEST(ArgumentTest, ArgParserCustomFunction) {
     Argument arg("<number>");
-    arg.argParser([](const std::string& value, const std::any&) -> std::any {
-        return std::stoi(value);
+    arg.argParser([](const std::string& value, const polycpp::JsonValue&) -> polycpp::JsonValue {
+        return polycpp::JsonValue(std::stoi(value));
     });
     EXPECT_TRUE(static_cast<bool>(arg.parseArg_));
-    auto result = arg.parseArg_("42", std::any{});
-    EXPECT_EQ(std::any_cast<int>(result), 42);
+    auto result = arg.parseArg_("42", polycpp::JsonValue());
+    EXPECT_EQ(result.asInt(), 42);
 }
 
 // --- Choices tests ---
@@ -100,29 +100,31 @@ TEST(ArgumentTest, ChoicesValidatorAcceptsValid) {
     Argument arg("<size>");
     arg.choices({"small", "medium", "large"});
     EXPECT_TRUE(static_cast<bool>(arg.parseArg_));
-    auto result = arg.parseArg_("medium", std::any{});
-    EXPECT_EQ(std::any_cast<std::string>(result), "medium");
+    auto result = arg.parseArg_("medium", polycpp::JsonValue());
+    EXPECT_EQ(result.asString(), "medium");
 }
 
 TEST(ArgumentTest, ChoicesValidatorRejectsInvalid) {
     Argument arg("<size>");
     arg.choices({"small", "medium", "large"});
-    EXPECT_THROW(arg.parseArg_("huge", std::any{}), InvalidArgumentError);
+    EXPECT_THROW(arg.parseArg_("huge", polycpp::JsonValue()), InvalidArgumentError);
 }
 
 TEST(ArgumentTest, ChoicesVariadicCollects) {
     Argument arg("<sizes...>");
     arg.choices({"small", "medium", "large"});
-    auto result1 = arg.parseArg_("small", std::any{});
-    auto vec = std::any_cast<std::vector<std::string>>(result1);
-    EXPECT_EQ(vec.size(), 1u);
-    EXPECT_EQ(vec[0], "small");
+    auto result1 = arg.parseArg_("small", polycpp::JsonValue());
+    ASSERT_TRUE(result1.isArray());
+    auto& arr1 = result1.asArray();
+    EXPECT_EQ(arr1.size(), 1u);
+    EXPECT_EQ(arr1[0].asString(), "small");
 
     auto result2 = arg.parseArg_("medium", result1);
-    auto vec2 = std::any_cast<std::vector<std::string>>(result2);
-    EXPECT_EQ(vec2.size(), 2u);
-    EXPECT_EQ(vec2[0], "small");
-    EXPECT_EQ(vec2[1], "medium");
+    ASSERT_TRUE(result2.isArray());
+    auto& arr2 = result2.asArray();
+    EXPECT_EQ(arr2.size(), 2u);
+    EXPECT_EQ(arr2[0].asString(), "small");
+    EXPECT_EQ(arr2[1].asString(), "medium");
 }
 
 // --- argRequired / argOptional ---
@@ -145,13 +147,13 @@ TEST(ArgumentTest, ArgOptionalClearsRequired) {
 
 TEST(ArgumentTest, DefaultValueReturnsThis) {
     Argument arg("<value>");
-    Argument& ref = arg.defaultValue(3);
+    Argument& ref = arg.defaultValue(polycpp::JsonValue(3));
     EXPECT_EQ(&ref, &arg);
 }
 
 TEST(ArgumentTest, ArgParserReturnsThis) {
     Argument arg("<value>");
-    Argument& ref = arg.argParser([](const std::string& v, const std::any&) -> std::any { return v; });
+    Argument& ref = arg.argParser([](const std::string& v, const polycpp::JsonValue&) -> polycpp::JsonValue { return polycpp::JsonValue(v); });
     EXPECT_EQ(&ref, &arg);
 }
 
@@ -175,12 +177,12 @@ TEST(ArgumentTest, ArgOptionalReturnsThis) {
 
 TEST(ArgumentTest, FluentChaining) {
     Argument arg("[size]");
-    arg.defaultValue(std::string("medium"), "default size")
+    arg.defaultValue(polycpp::JsonValue("medium"), "default size")
        .argRequired()
        .choices({"small", "medium", "large"});
     EXPECT_TRUE(arg.required);
     EXPECT_TRUE(arg.argChoices_.has_value());
-    EXPECT_EQ(std::any_cast<std::string>(arg.defaultValue_), "medium");
+    EXPECT_EQ(arg.defaultValue_.asString(), "medium");
 }
 
 // --- humanReadableArgName ---

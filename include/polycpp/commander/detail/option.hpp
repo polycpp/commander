@@ -178,14 +178,14 @@ inline bool Option::is(const std::string& arg) const {
            (long_.has_value() && *long_ == arg);
 }
 
-inline Option& Option::defaultValue(std::any value, const std::string& description) {
-    defaultValue_ = std::move(value);
+inline Option& Option::defaultValue(const polycpp::JsonValue& value, const std::string& description) {
+    defaultValue_ = value;
     defaultValueDescription_ = description;
     return *this;
 }
 
-inline Option& Option::preset(std::any arg) {
-    presetArg_ = std::move(arg);
+inline Option& Option::preset(const polycpp::JsonValue& arg) {
+    presetArg_ = arg;
     return *this;
 }
 
@@ -199,9 +199,9 @@ inline Option& Option::conflicts(const std::vector<std::string>& names) {
     return *this;
 }
 
-inline Option& Option::implies(const std::unordered_map<std::string, std::any>& values) {
+inline Option& Option::implies(const std::map<std::string, polycpp::JsonValue>& values) {
     if (!implied_.has_value()) {
-        implied_ = std::unordered_map<std::string, std::any>{};
+        implied_ = std::map<std::string, polycpp::JsonValue>{};
     }
     for (const auto& [key, val] : values) {
         (*implied_)[key] = val;
@@ -233,7 +233,7 @@ inline Option& Option::choices(const std::vector<std::string>& values) {
     argChoices_ = values;
     auto choicesCopy = values;
     bool isVariadic = variadic;
-    parseArg_ = [choicesCopy, isVariadic](const std::string& arg, const std::any& previous) -> std::any {
+    parseArg_ = [choicesCopy, isVariadic](const std::string& arg, const polycpp::JsonValue& previous) -> polycpp::JsonValue {
         if (std::find(choicesCopy.begin(), choicesCopy.end(), arg) == choicesCopy.end()) {
             std::string allowed;
             for (size_t i = 0; i < choicesCopy.size(); ++i) {
@@ -243,18 +243,17 @@ inline Option& Option::choices(const std::vector<std::string>& values) {
             throw InvalidArgumentError("Allowed choices are " + allowed + ".");
         }
         if (isVariadic) {
-            if (!previous.has_value()) {
-                return std::any(std::vector<std::string>{arg});
+            if (previous.isNull()) {
+                return polycpp::JsonValue(polycpp::JsonArray{polycpp::JsonValue(arg)});
             }
-            try {
-                auto vec = std::any_cast<std::vector<std::string>>(previous);
-                vec.push_back(arg);
-                return std::any(std::move(vec));
-            } catch (const std::bad_any_cast&) {
-                return std::any(std::vector<std::string>{arg});
+            if (previous.isArray()) {
+                polycpp::JsonValue result = previous;
+                result.asArray().push_back(polycpp::JsonValue(arg));
+                return result;
             }
+            return polycpp::JsonValue(polycpp::JsonArray{polycpp::JsonValue(arg)});
         }
-        return std::any(arg);
+        return polycpp::JsonValue(arg);
     };
     return *this;
 }

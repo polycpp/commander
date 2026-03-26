@@ -9,11 +9,10 @@
 
 #include <polycpp/commander/argument.hpp>
 
-#include <any>
 #include <functional>
+#include <map>
 #include <optional>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 namespace polycpp {
@@ -119,17 +118,17 @@ public:
 
     /**
      * @brief Set the default value, and optionally supply the description for help output.
-     * @param value Default value (stored as std::any).
+     * @param value Default value (stored as polycpp::JsonValue).
      * @param description Optional human-readable description of the default.
      * @return Reference to this Option for chaining.
      * @par Example
      * @code{.cpp}
-     *   opt.defaultValue(std::string("red"), "favorite color");
+     *   opt.defaultValue(polycpp::JsonValue("red"), "favorite color");
      * @endcode
      * @see https://github.com/tj/commander.js#options
      * @since 0.1.0
      */
-    Option& defaultValue(std::any value, const std::string& description = "");
+    Option& defaultValue(const polycpp::JsonValue& value, const std::string& description = "");
 
     /**
      * @brief Set the preset value when option is used without an option-argument.
@@ -137,12 +136,12 @@ public:
      * @return Reference to this Option for chaining.
      * @par Example
      * @code{.cpp}
-     *   Option opt("--color").defaultValue(std::string("GREYSCALE")).preset(std::string("RGB"));
+     *   Option opt("--color").defaultValue(polycpp::JsonValue("GREYSCALE")).preset(polycpp::JsonValue("RGB"));
      * @endcode
      * @see https://github.com/tj/commander.js#options
      * @since 0.1.0
      */
-    Option& preset(std::any arg);
+    Option& preset(const polycpp::JsonValue& arg);
 
     /**
      * @brief Add option name(s) that conflict with this option.
@@ -176,12 +175,12 @@ public:
      * @return Reference to this Option for chaining.
      * @par Example
      * @code{.cpp}
-     *   opt.implies({{"log", std::any(std::string("trace.txt"))}});
+     *   opt.implies({{"log", polycpp::JsonValue("trace.txt")}});
      * @endcode
      * @see https://github.com/tj/commander.js#options
      * @since 0.1.0
      */
-    Option& implies(const std::unordered_map<std::string, std::any>& values);
+    Option& implies(const std::map<std::string, polycpp::JsonValue>& values);
 
     /**
      * @brief Set environment variable to check for option value.
@@ -202,8 +201,8 @@ public:
      * @return Reference to this Option for chaining.
      * @par Example
      * @code{.cpp}
-     *   opt.argParser([](const std::string& value, const std::any&) -> std::any {
-     *       return std::stoi(value);
+     *   opt.argParser([](const std::string& value, const polycpp::JsonValue&) -> polycpp::JsonValue {
+     *       return polycpp::JsonValue(std::stoi(value));
      *   });
      * @endcode
      * @see https://github.com/tj/commander.js#custom-option-processing
@@ -260,14 +259,14 @@ public:
     bool hidden;                ///< Hide from help output.
     std::optional<std::string> short_;  ///< Short flag (e.g., "-f").
     std::optional<std::string> long_;   ///< Long flag (e.g., "--file").
-    std::any defaultValue_;             ///< Default value.
+    polycpp::JsonValue defaultValue_;    ///< Default value (null if not set).
     std::string defaultValueDescription_; ///< Description of the default value.
-    std::any presetArg_;                ///< Preset value when used without argument.
+    polycpp::JsonValue presetArg_;       ///< Preset value when used without argument (null if not set).
     std::optional<std::string> envVar_; ///< Environment variable name.
     ParseFn parseArg_;                  ///< Custom argument parser.
     std::optional<std::vector<std::string>> argChoices_; ///< Allowed values.
     std::vector<std::string> conflictsWith_; ///< Names of conflicting options.
-    std::optional<std::unordered_map<std::string, std::any>> implied_; ///< Implied option values.
+    std::optional<std::map<std::string, polycpp::JsonValue>> implied_; ///< Implied option values.
 
 private:
     // (no additional private members beyond public fields)

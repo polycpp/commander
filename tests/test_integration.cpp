@@ -20,16 +20,16 @@ TEST(IntegrationTest, BasicCLIProgram) {
     std::string capturedOutput;
     bool capturedVerbose = false;
 
-    program.action([&](auto& args, auto& opts, auto&) {
+    program.action([&](const std::vector<polycpp::JsonValue>& args, const polycpp::JsonValue& opts, Command&) {
         actionCalled = true;
-        capturedInput = std::any_cast<std::string>(args[0]);
-        if (opts.count("output") && opts.at("output").has_value() &&
-            opts.at("output").type() == typeid(std::string)) {
-            capturedOutput = std::any_cast<std::string>(opts.at("output"));
+        capturedInput = args[0].asString();
+        if (opts.hasKey("output") && !opts.asObject().at("output").isNull() &&
+            opts.asObject().at("output").isString()) {
+            capturedOutput = opts.asObject().at("output").asString();
         }
-        if (opts.count("verbose") && opts.at("verbose").has_value() &&
-            opts.at("verbose").type() == typeid(bool)) {
-            capturedVerbose = std::any_cast<bool>(opts.at("verbose"));
+        if (opts.hasKey("verbose") && !opts.asObject().at("verbose").isNull() &&
+            opts.asObject().at("verbose").isBool()) {
+            capturedVerbose = opts.asObject().at("verbose").asBool();
         }
     });
 
@@ -53,16 +53,16 @@ TEST(IntegrationTest, SubcommandProgram) {
     program.command("clone <url> [dir]")
            .description("clone a repository")
            .option("-b, --branch <name>", "branch to clone")
-           .action([&](auto& args, auto& opts, auto&) {
+           .action([&](const std::vector<polycpp::JsonValue>& args, const polycpp::JsonValue&, Command&) {
                cloneCalled = true;
-               clonedUrl = std::any_cast<std::string>(args[0]);
+               clonedUrl = args[0].asString();
            });
 
     bool pushCalled = false;
     program.command("push")
            .description("push changes")
            .option("-f, --force", "force push")
-           .action([&](auto& args, auto& opts, auto&) {
+           .action([&](const std::vector<polycpp::JsonValue>&, const polycpp::JsonValue&, Command&) {
                pushCalled = true;
            });
 
@@ -78,7 +78,7 @@ TEST(IntegrationTest, MissingRequiredOptionError) {
     program.exitOverride();
     program.name("myapp");
     program.requiredOption("-c, --config <path>", "config file path");
-    program.action([](auto&, auto&, auto&) {});
+    program.action([](const std::vector<polycpp::JsonValue>&, const polycpp::JsonValue&, Command&) {});
 
     std::string errorOutput;
     program.configureOutput({
@@ -111,7 +111,6 @@ TEST(IntegrationTest, HelpOutputContent) {
 
     auto helpText = program.helpInformation();
 
-    // Check all sections are present
     EXPECT_NE(helpText.find("Usage:"), std::string::npos);
     EXPECT_NE(helpText.find("myapp"), std::string::npos);
     EXPECT_NE(helpText.find("A multi-purpose CLI tool"), std::string::npos);
@@ -133,7 +132,6 @@ TEST(IntegrationTest, VersionFromHelpText) {
     program.version("3.0.0");
 
     auto helpText = program.helpInformation();
-    // Version option should appear in help
     EXPECT_NE(helpText.find("--version"), std::string::npos);
 }
 
@@ -147,10 +145,10 @@ TEST(IntegrationTest, NestedSubcommands) {
                          .description("manage remotes");
     outer.command("add <name> <url>")
          .description("add a remote")
-         .action([&](auto& args, auto&, auto&) {
+         .action([&](const std::vector<polycpp::JsonValue>& args, const polycpp::JsonValue&, Command&) {
              innerCalled = true;
-             EXPECT_EQ(std::any_cast<std::string>(args[0]), "origin");
-             EXPECT_EQ(std::any_cast<std::string>(args[1]), "https://example.com");
+             EXPECT_EQ(args[0].asString(), "origin");
+             EXPECT_EQ(args[1].asString(), "https://example.com");
          });
 
     program.parse({"node", "app", "remote", "add", "origin", "https://example.com"});
@@ -173,18 +171,17 @@ TEST(IntegrationTest, MultipleParseCalls) {
     program.exitOverride();
     program.name("myapp");
     program.option("-v, --verbose", "verbose");
-    program.action([](auto&, auto&, auto&) {});
+    program.action([](const std::vector<polycpp::JsonValue>&, const polycpp::JsonValue&, Command&) {});
 
     // First parse
     program.parse({"node", "myapp", "--verbose"}, {.from = "node"});
-    EXPECT_TRUE(std::any_cast<bool>(program.opts()["verbose"]));
+    EXPECT_TRUE(program.opts()["verbose"].asBool());
 
     // Second parse should reset state
     program.parse({"node", "myapp"}, {.from = "node"});
-    // verbose should be back to default (not set)
     auto o = program.opts();
-    EXPECT_FALSE(o.count("verbose") && o["verbose"].has_value() &&
-                 o["verbose"].type() == typeid(bool) && std::any_cast<bool>(o["verbose"]));
+    EXPECT_TRUE(!o.hasKey("verbose") || o["verbose"].isNull() ||
+                (o["verbose"].isBool() && !o["verbose"].asBool()));
 }
 
 TEST(IntegrationTest, ErrorOutputConfiguration) {

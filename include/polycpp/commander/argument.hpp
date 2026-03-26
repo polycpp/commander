@@ -7,7 +7,8 @@
  * @since 0.1.0
  */
 
-#include <any>
+#include <polycpp/core/json.hpp>
+
 #include <functional>
 #include <optional>
 #include <string>
@@ -18,7 +19,7 @@ namespace commander {
 
 /// @brief Type alias for argument parsing callbacks.
 /// @since 0.1.0
-using ParseFn = std::function<std::any(const std::string&, const std::any&)>;
+using ParseFn = std::function<polycpp::JsonValue(const std::string&, const polycpp::JsonValue&)>;
 
 /**
  * @brief Represents a command argument (positional parameter).
@@ -67,17 +68,17 @@ public:
 
     /**
      * @brief Set the default value, and optionally supply the description for help output.
-     * @param value Default value (stored as std::any).
+     * @param value Default value (stored as polycpp::JsonValue).
      * @param description Optional human-readable description of the default.
      * @return Reference to this Argument for chaining.
      * @par Example
      * @code{.cpp}
-     *   Argument arg("[color]").defaultValue(std::string("blue"), "favorite color");
+     *   Argument arg("[color]").defaultValue(polycpp::JsonValue("blue"), "favorite color");
      * @endcode
      * @see https://github.com/tj/commander.js#more-configuration-2
      * @since 0.1.0
      */
-    Argument& defaultValue(std::any value, const std::string& description = "");
+    Argument& defaultValue(const polycpp::JsonValue& value, const std::string& description = "");
 
     /**
      * @brief Set the custom handler for processing CLI argument values.
@@ -85,8 +86,8 @@ public:
      * @return Reference to this Argument for chaining.
      * @par Example
      * @code{.cpp}
-     *   arg.argParser([](const std::string& value, const std::any&) -> std::any {
-     *       return std::stoi(value);
+     *   arg.argParser([](const std::string& value, const polycpp::JsonValue&) -> polycpp::JsonValue {
+     *       return polycpp::JsonValue(std::stoi(value));
      *   });
      * @endcode
      * @see https://github.com/tj/commander.js#custom-argument-processing
@@ -126,7 +127,7 @@ public:
     std::string description;                ///< Human-readable description.
     bool required;                          ///< Whether the argument must be provided.
     bool variadic;                          ///< Whether the argument accepts multiple values.
-    std::any defaultValue_;                 ///< Default value (empty if not set).
+    polycpp::JsonValue defaultValue_;        ///< Default value (null if not set).
     std::string defaultValueDescription_;   ///< Description of the default value.
     ParseFn parseArg_;                      ///< Custom argument parser.
     std::optional<std::vector<std::string>> argChoices_; ///< Allowed values.

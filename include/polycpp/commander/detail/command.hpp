@@ -32,7 +32,7 @@ namespace commander {
 // ---- Constructor ----
 
 inline Command::Command(const std::string& name)
-    : name_(name) {
+    : name_(name), optionValues_(polycpp::JsonObject{}) {
     // Set up default output configuration
     outputConfiguration_.writeOut = [](const std::string& str) {
         std::cout << str;
@@ -175,16 +175,16 @@ inline Command& Command::option(const std::string& flags, const std::string& des
 }
 
 inline Command& Command::option(const std::string& flags, const std::string& description,
-                                 const std::any& defaultValue) {
+                                 const polycpp::JsonValue& defaultValue) {
     Option opt = createOption(flags, description);
     opt.defaultValue(defaultValue);
     return addOption(std::move(opt));
 }
 
 inline Command& Command::option(const std::string& flags, const std::string& description,
-                                 ParseFn parseArg, const std::any& defaultValue) {
+                                 ParseFn parseArg, const polycpp::JsonValue& defaultValue) {
     Option opt = createOption(flags, description);
-    if (defaultValue.has_value()) {
+    if (!defaultValue.isNull()) {
         opt.defaultValue(defaultValue);
     }
     opt.argParser(std::move(parseArg));
@@ -198,7 +198,7 @@ inline Command& Command::requiredOption(const std::string& flags, const std::str
 }
 
 inline Command& Command::requiredOption(const std::string& flags, const std::string& description,
-                                         const std::any& defaultValue) {
+                                         const polycpp::JsonValue& defaultValue) {
     Option opt = createOption(flags, description);
     opt.makeOptionMandatory(true);
     opt.defaultValue(defaultValue);
@@ -206,10 +206,10 @@ inline Command& Command::requiredOption(const std::string& flags, const std::str
 }
 
 inline Command& Command::requiredOption(const std::string& flags, const std::string& description,
-                                         ParseFn parseArg, const std::any& defaultValue) {
+                                         ParseFn parseArg, const polycpp::JsonValue& defaultValue) {
     Option opt = createOption(flags, description);
     opt.makeOptionMandatory(true);
-    if (defaultValue.has_value()) {
+    if (!defaultValue.isNull()) {
         opt.defaultValue(defaultValue);
     }
     opt.argParser(std::move(parseArg));
@@ -229,48 +229,47 @@ inline Command& Command::addOption(Option option) {
             ? std::regex_replace(*option.long_, std::regex("^--no-"), "--")
             : "";
         if (!positiveLongFlag.empty() && findOption_(positiveLongFlag) == nullptr) {
-            if (option.defaultValue_.has_value()) {
+            if (!option.defaultValue_.isNull()) {
                 setOptionValueWithSource(attrName, option.defaultValue_, "default");
             } else {
-                setOptionValueWithSource(attrName, std::any(true), "default");
+                setOptionValueWithSource(attrName, polycpp::JsonValue(true), "default");
             }
         }
-    } else if (option.defaultValue_.has_value()) {
+    } else if (!option.defaultValue_.isNull()) {
         setOptionValueWithSource(attrName, option.defaultValue_, "default");
     }
 
     // Capture option properties for the lambda closures
-    bool optRequired = option.required;
-    bool optOptional = option.optional;
     bool optNegate = option.negate;
     bool optVariadic = option.variadic;
     bool optIsBoolean = option.isBoolean();
+    bool optOptional = option.optional;
     bool hasParseArg = static_cast<bool>(option.parseArg_);
-    bool hasPresetArg = option.presetArg_.has_value();
-    std::any presetArg = option.presetArg_;
+    bool hasPresetArg = !option.presetArg_.isNull();
+    polycpp::JsonValue presetArg = option.presetArg_;
     std::string optFlags = option.flags;
 
     // Handler for cli and env supplied values
     auto handleOptionValue = [this, attrName, optNegate, optIsBoolean, optOptional,
                                optVariadic, hasParseArg, hasPresetArg, presetArg,
-                               optFlags](std::any val, const std::string& invalidValueMessage,
+                               optFlags](polycpp::JsonValue val, const std::string& invalidValueMessage,
                                          const std::string& valueSource) {
-        // val is empty for boolean/negate, or null for optional without arg
-        if (!val.has_value() && hasPresetArg) {
+        // val is null for boolean/negate, or null for optional without arg
+        if (val.isNull() && hasPresetArg) {
             val = presetArg;
         }
 
         // custom processing
-        std::any oldValue = getOptionValue(attrName);
+        polycpp::JsonValue oldValue = getOptionValue(attrName);
 
-        if (val.has_value() && hasParseArg) {
+        if (!val.isNull() && hasParseArg) {
             // Find the option to get parseArg_
             for (auto& opt : options) {
                 if (opt.attributeName() == attrName && opt.parseArg_) {
                     try {
                         std::string valStr;
-                        if (val.type() == typeid(std::string)) {
-                            valStr = std::any_cast<std::string>(val);
+                        if (val.isString()) {
+                            valStr = val.asString();
                         }
                         val = opt.parseArg_(valStr, oldValue);
                     } catch (const InvalidArgumentError& err) {
@@ -281,33 +280,29 @@ inline Command& Command::addOption(Option option) {
                     break;
                 }
             }
-        } else if (val.has_value() && optVariadic) {
-            // Collect into vector
+        } else if (!val.isNull() && optVariadic) {
+            // Collect into array
             std::string valStr;
-            if (val.type() == typeid(std::string)) {
-                valStr = std::any_cast<std::string>(val);
+            if (val.isString()) {
+                valStr = val.asString();
             }
-            if (oldValue.has_value()) {
-                try {
-                    auto vec = std::any_cast<std::vector<std::string>>(oldValue);
-                    vec.push_back(valStr);
-                    val = std::any(std::move(vec));
-                } catch (const std::bad_any_cast&) {
-                    val = std::any(std::vector<std::string>{valStr});
-                }
+            if (!oldValue.isNull() && oldValue.isArray()) {
+                polycpp::JsonValue result = oldValue;
+                result.asArray().push_back(polycpp::JsonValue(valStr));
+                val = result;
             } else {
-                val = std::any(std::vector<std::string>{valStr});
+                val = polycpp::JsonValue(polycpp::JsonArray{polycpp::JsonValue(valStr)});
             }
         }
 
         // Fill in appropriate missing values
-        if (!val.has_value()) {
+        if (val.isNull()) {
             if (optNegate) {
-                val = std::any(false);
+                val = polycpp::JsonValue(false);
             } else if (optIsBoolean || optOptional) {
-                val = std::any(true);
+                val = polycpp::JsonValue(true);
             } else {
-                val = std::any(std::string(""));
+                val = polycpp::JsonValue("");
             }
         }
 
@@ -315,13 +310,17 @@ inline Command& Command::addOption(Option option) {
     };
 
     on("option:" + oname, [handleOptionValue, optFlags](const std::vector<std::any>& eventArgs) {
-        std::any val;
+        polycpp::JsonValue val;  // null
         if (!eventArgs.empty()) {
-            val = eventArgs[0];
+            // Event args from EventEmitter are std::any; convert to JsonValue
+            if (eventArgs[0].type() == typeid(std::string)) {
+                val = polycpp::JsonValue(std::any_cast<std::string>(eventArgs[0]));
+            }
+            // If not a string, val stays null (for boolean options)
         }
         std::string valStr;
-        if (val.has_value() && val.type() == typeid(std::string)) {
-            valStr = std::any_cast<std::string>(val);
+        if (val.isString()) {
+            valStr = val.asString();
         }
         std::string invalidValueMessage = "error: option '" + optFlags + "' argument '" + valStr + "' is invalid.";
         handleOptionValue(val, invalidValueMessage, "cli");
@@ -329,13 +328,15 @@ inline Command& Command::addOption(Option option) {
 
     if (option.envVar_.has_value()) {
         on("optionEnv:" + oname, [handleOptionValue, optFlags, option](const std::vector<std::any>& eventArgs) {
-            std::any val;
+            polycpp::JsonValue val;  // null
             if (!eventArgs.empty()) {
-                val = eventArgs[0];
+                if (eventArgs[0].type() == typeid(std::string)) {
+                    val = polycpp::JsonValue(std::any_cast<std::string>(eventArgs[0]));
+                }
             }
             std::string valStr;
-            if (val.has_value() && val.type() == typeid(std::string)) {
-                valStr = std::any_cast<std::string>(val);
+            if (val.isString()) {
+                valStr = val.asString();
             }
             std::string invalidValueMessage = "error: option '" + optFlags + "' value '" + valStr +
                                                "' from env '" + *option.envVar_ + "' is invalid.";
@@ -373,7 +374,7 @@ inline Command& Command::addArgument(Argument argument) {
             "only the last argument can be variadic '" + registeredArguments.back().name() + "'");
     }
     // Check: required arg with default and no parser doesn't make sense
-    if (argument.required && argument.defaultValue_.has_value() && !argument.parseArg_) {
+    if (argument.required && !argument.defaultValue_.isNull() && !argument.parseArg_) {
         throw std::runtime_error(
             "a default value for a required argument is never used: '" + argument.name() + "'");
     }
@@ -479,7 +480,7 @@ inline std::string Command::executableDir() const {
 // ---- Action ----
 
 inline Command& Command::action(ActionFn fn) {
-    actionHandler_ = [this, fn = std::move(fn)](const std::vector<std::any>& processedArgs) {
+    actionHandler_ = [this, fn = std::move(fn)](const std::vector<polycpp::JsonValue>& processedArgs) {
         auto optsMap = opts();
         fn(processedArgs, optsMap, *this);
     };
@@ -569,11 +570,11 @@ inline ParseOptionsResult Command::parseOptions(const std::vector<std::string>& 
                     emit("option:" + option->name(), std::string(value));
                 } else if (option->optional) {
                     // Historical behaviour: optional value is following arg unless it's an option
-                    std::any value;
                     if (i < inputArgs.size() && (!maybeOption(inputArgs[i]) || negativeNumberArg(inputArgs[i]))) {
-                        value = std::any(std::string(inputArgs[i++]));
+                        emit("option:" + option->name(), std::string(inputArgs[i++]));
+                    } else {
+                        emit("option:" + option->name());
                     }
-                    emit("option:" + option->name(), value.has_value() ? value : std::any());
                 } else {
                     // boolean flag
                     emit("option:" + option->name());
@@ -669,30 +670,36 @@ inline OptionValues Command::opts() const {
 }
 
 inline OptionValues Command::optsWithGlobals() const {
-    OptionValues result;
+    polycpp::JsonValue result(polycpp::JsonObject{});
     auto ancestors = getCommandAndAncestors_();
     for (auto it = ancestors.rbegin(); it != ancestors.rend(); ++it) {
         auto cmdOpts = (*it)->opts();
-        for (auto& [key, val] : cmdOpts) {
-            result[key] = val;
+        if (cmdOpts.isObject()) {
+            for (const auto& [key, val] : cmdOpts.asObject()) {
+                result[key] = val;
+            }
         }
     }
     return result;
 }
 
-inline std::any Command::getOptionValue(const std::string& key) const {
-    auto it = optionValues_.find(key);
-    if (it != optionValues_.end()) return it->second;
-    return {};
+inline polycpp::JsonValue Command::getOptionValue(const std::string& key) const {
+    if (optionValues_.isObject() && optionValues_.hasKey(key)) {
+        return optionValues_.asObject().at(key);
+    }
+    return polycpp::JsonValue();  // null
 }
 
-inline Command& Command::setOptionValue(const std::string& key, std::any value) {
-    return setOptionValueWithSource(key, std::move(value), "");
+inline Command& Command::setOptionValue(const std::string& key, const polycpp::JsonValue& value) {
+    return setOptionValueWithSource(key, value, "");
 }
 
-inline Command& Command::setOptionValueWithSource(const std::string& key, std::any value,
+inline Command& Command::setOptionValueWithSource(const std::string& key, const polycpp::JsonValue& value,
                                                     const std::string& source) {
-    optionValues_[key] = std::move(value);
+    if (!optionValues_.isObject()) {
+        optionValues_ = polycpp::JsonValue(polycpp::JsonObject{});
+    }
+    optionValues_[key] = value;
     optionValueSources_[key] = source;
     return *this;
 }
@@ -820,12 +827,12 @@ inline Command& Command::addHelpText(const std::string& position, const std::str
     return *this;
 }
 
-inline Command& Command::configureHelp(const std::unordered_map<std::string, std::any>& config) {
+inline Command& Command::configureHelp(const std::map<std::string, polycpp::JsonValue>& config) {
     helpConfiguration_ = config;
     return *this;
 }
 
-inline std::unordered_map<std::string, std::any> Command::configureHelp() const {
+inline std::map<std::string, polycpp::JsonValue> Command::configureHelp() const {
     return helpConfiguration_;
 }
 
@@ -944,14 +951,14 @@ inline Help Command::createHelp() const {
     Help help;
     // Apply configuration
     for (const auto& [key, val] : helpConfiguration_) {
-        if (key == "helpWidth" && val.type() == typeid(int)) {
-            help.helpWidth = std::any_cast<int>(val);
-        } else if (key == "sortSubcommands" && val.type() == typeid(bool)) {
-            help.sortSubcommands = std::any_cast<bool>(val);
-        } else if (key == "sortOptions" && val.type() == typeid(bool)) {
-            help.sortOptions = std::any_cast<bool>(val);
-        } else if (key == "showGlobalOptions" && val.type() == typeid(bool)) {
-            help.showGlobalOptions = std::any_cast<bool>(val);
+        if (key == "helpWidth" && val.isNumber()) {
+            help.helpWidth = val.asInt();
+        } else if (key == "sortSubcommands" && val.isBool()) {
+            help.sortSubcommands = val.asBool();
+        } else if (key == "sortOptions" && val.isBool()) {
+            help.sortOptions = val.asBool();
+        } else if (key == "showGlobalOptions" && val.isBool()) {
+            help.showGlobalOptions = val.asBool();
         }
     }
     return help;
@@ -1158,7 +1165,7 @@ inline void Command::parseOptionsEnv_() {
                 auto currentValue = getOptionValue(optionKey);
                 auto currentSource = getOptionValueSource(optionKey);
 
-                if (!currentValue.has_value() ||
+                if (currentValue.isNull() ||
                     currentSource == "default" || currentSource == "config" || currentSource == "env") {
                     if (option.required || option.optional) {
                         emit("optionEnv:" + option.name(), envVal);
@@ -1174,7 +1181,7 @@ inline void Command::parseOptionsEnv_() {
 inline void Command::parseOptionsImplied_() {
     auto hasCustomOptionValue = [this](const std::string& optionKey) -> bool {
         auto val = getOptionValue(optionKey);
-        if (!val.has_value()) return false;
+        if (val.isNull()) return false;
         auto src = getOptionValueSource(optionKey);
         return src != "default" && src != "implied";
     };
@@ -1188,13 +1195,13 @@ inline void Command::parseOptionsImplied_() {
             // Simple dual options check
             if (option.negate) {
                 // For negate options, only apply implies if value is false
-                if (val.has_value() && val.type() == typeid(bool)) {
-                    valueFromOption = !std::any_cast<bool>(val);
+                if (val.isBool()) {
+                    valueFromOption = !val.asBool();
                 }
             } else {
                 // For positive options, apply if value is truthy
-                if (val.has_value() && val.type() == typeid(bool)) {
-                    valueFromOption = std::any_cast<bool>(val);
+                if (val.isBool()) {
+                    valueFromOption = val.asBool();
                 }
             }
 
@@ -1231,13 +1238,13 @@ inline void Command::processArguments_() {
     processedArgs.clear();
     for (size_t index = 0; index < registeredArguments.size(); ++index) {
         const auto& declaredArg = registeredArguments[index];
-        std::any value = declaredArg.defaultValue_;
+        polycpp::JsonValue value = declaredArg.defaultValue_;
 
         if (declaredArg.variadic) {
             if (index < args.size()) {
                 std::vector<std::string> values(args.begin() + index, args.end());
                 if (declaredArg.parseArg_) {
-                    std::any processed = declaredArg.defaultValue_;
+                    polycpp::JsonValue processed = declaredArg.defaultValue_;
                     for (const auto& v : values) {
                         std::string invalidMsg = "error: command-argument value '" + v +
                                                   "' is invalid for argument '" + declaredArg.name() + "'.";
@@ -1245,10 +1252,14 @@ inline void Command::processArguments_() {
                     }
                     value = processed;
                 } else {
-                    value = std::any(values);
+                    polycpp::JsonArray arr;
+                    for (const auto& v : values) {
+                        arr.push_back(polycpp::JsonValue(v));
+                    }
+                    value = polycpp::JsonValue(std::move(arr));
                 }
-            } else if (!value.has_value()) {
-                value = std::any(std::vector<std::string>{});
+            } else if (value.isNull()) {
+                value = polycpp::JsonValue(polycpp::JsonArray{});
             }
         } else if (index < args.size()) {
             std::string argValue = args[index];
@@ -1257,7 +1268,7 @@ inline void Command::processArguments_() {
                                           "' is invalid for argument '" + declaredArg.name() + "'.";
                 value = callParseArg_(declaredArg, argValue, declaredArg.defaultValue_, invalidMsg);
             } else {
-                value = std::any(argValue);
+                value = polycpp::JsonValue(argValue);
             }
         }
         processedArgs.push_back(value);
@@ -1267,7 +1278,7 @@ inline void Command::processArguments_() {
 inline void Command::checkForMissingMandatoryOptions_() {
     for (const auto* cmd : getCommandAndAncestors_()) {
         for (const auto& opt : cmd->options) {
-            if (opt.mandatory && !cmd->getOptionValue(opt.attributeName()).has_value()) {
+            if (opt.mandatory && cmd->getOptionValue(opt.attributeName()).isNull()) {
                 const_cast<Command*>(cmd)->missingMandatoryOptionValue(opt);
             }
         }
@@ -1285,7 +1296,7 @@ inline void Command::checkForConflictingLocalOptions_() {
     for (const auto& opt : options) {
         std::string key = opt.attributeName();
         auto val = getOptionValue(key);
-        if (!val.has_value()) continue;
+        if (val.isNull()) continue;
         auto src = getOptionValueSource(key);
         if (src == "default") continue;
         definedNonDefault.push_back(&opt);
@@ -1522,13 +1533,13 @@ inline void Command::callSubCommandHook_(Command& subCommand, const std::string&
     }
 }
 
-inline std::any Command::callParseArg_(const Option& target, const std::string& value,
-                                        const std::any& previous, const std::string& invalidArgMsg) {
+inline polycpp::JsonValue Command::callParseArg_(const Option& target, const std::string& value,
+                                        const polycpp::JsonValue& previous, const std::string& invalidArgMsg) {
     try {
         if (target.parseArg_) {
             return target.parseArg_(value, previous);
         }
-        return std::any(value);
+        return polycpp::JsonValue(value);
     } catch (const InvalidArgumentError& err) {
         std::string message = invalidArgMsg + " " + std::string(err.what()).substr(7);
         error(message, {err.exitCode, err.code});
@@ -1536,13 +1547,13 @@ inline std::any Command::callParseArg_(const Option& target, const std::string& 
     }
 }
 
-inline std::any Command::callParseArg_(const Argument& target, const std::string& value,
-                                        const std::any& previous, const std::string& invalidArgMsg) {
+inline polycpp::JsonValue Command::callParseArg_(const Argument& target, const std::string& value,
+                                        const polycpp::JsonValue& previous, const std::string& invalidArgMsg) {
     try {
         if (target.parseArg_) {
             return target.parseArg_(value, previous);
         }
-        return std::any(value);
+        return polycpp::JsonValue(value);
     } catch (const InvalidArgumentError& err) {
         std::string message = invalidArgMsg + " " + std::string(err.what()).substr(7);
         error(message, {.exitCode = err.exitCode, .code = err.code});

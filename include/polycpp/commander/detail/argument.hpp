@@ -39,8 +39,8 @@ inline std::string Argument::name() const {
     return name_;
 }
 
-inline Argument& Argument::defaultValue(std::any value, const std::string& description) {
-    defaultValue_ = std::move(value);
+inline Argument& Argument::defaultValue(const polycpp::JsonValue& value, const std::string& description) {
+    defaultValue_ = value;
     defaultValueDescription_ = description;
     return *this;
 }
@@ -54,7 +54,7 @@ inline Argument& Argument::choices(const std::vector<std::string>& values) {
     argChoices_ = values;
     auto choicesCopy = values;
     bool isVariadic = variadic;
-    parseArg_ = [choicesCopy, isVariadic](const std::string& arg, const std::any& previous) -> std::any {
+    parseArg_ = [choicesCopy, isVariadic](const std::string& arg, const polycpp::JsonValue& previous) -> polycpp::JsonValue {
         if (std::find(choicesCopy.begin(), choicesCopy.end(), arg) == choicesCopy.end()) {
             std::string allowed;
             for (size_t i = 0; i < choicesCopy.size(); ++i) {
@@ -64,19 +64,18 @@ inline Argument& Argument::choices(const std::vector<std::string>& values) {
             throw InvalidArgumentError("Allowed choices are " + allowed + ".");
         }
         if (isVariadic) {
-            // Collect into vector
-            if (!previous.has_value()) {
-                return std::any(std::vector<std::string>{arg});
+            // Collect into array
+            if (previous.isNull()) {
+                return polycpp::JsonValue(polycpp::JsonArray{polycpp::JsonValue(arg)});
             }
-            try {
-                auto vec = std::any_cast<std::vector<std::string>>(previous);
-                vec.push_back(arg);
-                return std::any(std::move(vec));
-            } catch (const std::bad_any_cast&) {
-                return std::any(std::vector<std::string>{arg});
+            if (previous.isArray()) {
+                polycpp::JsonValue result = previous;
+                result.asArray().push_back(polycpp::JsonValue(arg));
+                return result;
             }
+            return polycpp::JsonValue(polycpp::JsonArray{polycpp::JsonValue(arg)});
         }
-        return std::any(arg);
+        return polycpp::JsonValue(arg);
     };
     return *this;
 }
