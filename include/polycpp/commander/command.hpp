@@ -54,6 +54,8 @@ struct OutputConfiguration {
     std::function<void(const std::string&, std::function<void(const std::string&)>)> outputError; ///< Error output handler.
     std::function<int()> getOutHelpWidth;               ///< Get stdout help width.
     std::function<int()> getErrHelpWidth;               ///< Get stderr help width.
+    std::function<bool()> getOutHasColors;              ///< Whether stdout supports ANSI colors.
+    std::function<bool()> getErrHasColors;              ///< Whether stderr supports ANSI colors.
 };
 
 /// @brief Type alias for option value storage.
