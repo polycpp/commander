@@ -42,4 +42,8 @@ if(POLYCPP_COMMANDER_BUILD_TESTS)
     target_link_libraries(test_error PRIVATE polycpp_commander GTest::gtest_main)
     include(GoogleTest)
     gtest_discover_tests(test_error)
+
+    add_executable(test_suggest_similar tests/test_suggest_similar.cpp)
+    target_link_libraries(test_suggest_similar PRIVATE polycpp_commander GTest::gtest_main)
+    gtest_discover_tests(test_suggest_similar)
 endif()

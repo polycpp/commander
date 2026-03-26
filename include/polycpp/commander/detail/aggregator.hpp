@@ -8,6 +8,8 @@
 
 // Declarations
 #include <polycpp/commander/error.hpp>
+#include <polycpp/commander/suggest_similar.hpp>
 
 // Inline implementations
 #include <polycpp/commander/detail/error.hpp>
+#include <polycpp/commander/detail/suggest_similar.hpp>
