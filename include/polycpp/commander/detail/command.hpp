@@ -119,7 +119,7 @@ inline Command& Command::version(const std::string& str,
     registerOption_(versionOption);
 
     std::string versionStr = str;
-    on("option:" + versionOption.name(), [this, versionStr](const std::vector<std::any>&) {
+    onInternalEvent_("option:" + versionOption.name(), [this, versionStr](const std::optional<std::string>&) {
         outputConfiguration_.writeOut(versionStr + "\n");
         exit_(0, "commander.version", versionStr);
     });
@@ -309,14 +309,10 @@ inline Command& Command::addOption(Option option) {
         setOptionValueWithSource(attrName, val, valueSource);
     };
 
-    on("option:" + oname, [handleOptionValue, optFlags](const std::vector<std::any>& eventArgs) {
+    onInternalEvent_("option:" + oname, [handleOptionValue, optFlags](const std::optional<std::string>& eventArg) {
         polycpp::JsonValue val;  // null
-        if (!eventArgs.empty()) {
-            // Event args from EventEmitter are std::any; convert to JsonValue
-            if (eventArgs[0].type() == typeid(std::string)) {
-                val = polycpp::JsonValue(std::any_cast<std::string>(eventArgs[0]));
-            }
-            // If not a string, val stays null (for boolean options)
+        if (eventArg.has_value()) {
+            val = polycpp::JsonValue(*eventArg);
         }
         std::string valStr;
         if (val.isString()) {
@@ -327,12 +323,11 @@ inline Command& Command::addOption(Option option) {
     });
 
     if (option.envVar_.has_value()) {
-        on("optionEnv:" + oname, [handleOptionValue, optFlags, option](const std::vector<std::any>& eventArgs) {
+        onInternalEvent_("optionEnv:" + oname,
+                         [handleOptionValue, optFlags, option](const std::optional<std::string>& eventArg) {
             polycpp::JsonValue val;  // null
-            if (!eventArgs.empty()) {
-                if (eventArgs[0].type() == typeid(std::string)) {
-                    val = polycpp::JsonValue(std::any_cast<std::string>(eventArgs[0]));
-                }
+            if (eventArg.has_value()) {
+                val = polycpp::JsonValue(*eventArg);
             }
             std::string valStr;
             if (val.isString()) {
@@ -554,7 +549,7 @@ inline ParseOptionsResult Command::parseOptions(const std::vector<std::string>& 
 
         // Active variadic option collects non-option args
         if (activeVariadicOption && (!maybeOption(arg) || negativeNumberArg(arg))) {
-            emit("option:" + activeVariadicOption->name(), std::string(arg));
+            emitInternalEvent_("option:" + activeVariadicOption->name(), std::string(arg));
             continue;
         }
         activeVariadicOption = nullptr;
@@ -567,17 +562,17 @@ inline ParseOptionsResult Command::parseOptions(const std::vector<std::string>& 
                         optionMissingArgument(*option);
                     }
                     std::string value = inputArgs[i++];
-                    emit("option:" + option->name(), std::string(value));
+                    emitInternalEvent_("option:" + option->name(), std::string(value));
                 } else if (option->optional) {
                     // Historical behaviour: optional value is following arg unless it's an option
                     if (i < inputArgs.size() && (!maybeOption(inputArgs[i]) || negativeNumberArg(inputArgs[i]))) {
-                        emit("option:" + option->name(), std::string(inputArgs[i++]));
+                        emitInternalEvent_("option:" + option->name(), std::string(inputArgs[i++]));
                     } else {
-                        emit("option:" + option->name());
+                        emitInternalEvent_("option:" + option->name());
                     }
                 } else {
                     // boolean flag
-                    emit("option:" + option->name());
+                    emitInternalEvent_("option:" + option->name());
                 }
                 activeVariadicOption = option->variadic ? option : nullptr;
                 continue;
@@ -591,10 +586,10 @@ inline ParseOptionsResult Command::parseOptions(const std::vector<std::string>& 
                 if (option->required ||
                     (option->optional && combineFlagAndOptionalValue_)) {
                     // Value following in same argument
-                    emit("option:" + option->name(), std::string(arg.substr(2)));
+                    emitInternalEvent_("option:" + option->name(), std::string(arg.substr(2)));
                 } else {
                     // Boolean; remove processed option and keep processing group
-                    emit("option:" + option->name());
+                    emitInternalEvent_("option:" + option->name());
                     activeGroup = "-" + arg.substr(2);
                 }
                 continue;
@@ -607,7 +602,7 @@ inline ParseOptionsResult Command::parseOptions(const std::vector<std::string>& 
             if (eqPos != std::string::npos) {
                 const Option* option = findOption_(arg.substr(0, eqPos));
                 if (option && (option->required || option->optional)) {
-                    emit("option:" + option->name(), std::string(arg.substr(eqPos + 1)));
+                    emitInternalEvent_("option:" + option->name(), std::string(arg.substr(eqPos + 1)));
                     continue;
                 }
             }
@@ -797,6 +792,8 @@ inline std::string Command::helpInformation(const HelpContext& context) const {
     }
     helper.prepareContext({.helpWidth = hw, .outputHasColors = hasColors});
     std::string text = helper.formatHelp(*this, helper);
+    text = renderHelpText_("beforeAll") + renderHelpText_("before") + text +
+           renderHelpText_("after") + renderHelpText_("afterAll");
     // Strip color if output does not support it (safety net).
     if (!hasColors) {
         text = stripColor(text);
@@ -818,12 +815,7 @@ inline Command& Command::addHelpText(const std::string& position, const std::str
             "Expecting one of 'beforeAll', 'before', 'after', 'afterAll'");
     }
 
-    std::string helpEvent = position + "Help";
-    on(helpEvent, [text](const std::vector<std::any>&) {
-        if (!text.empty()) {
-            std::cout << text << "\n";
-        }
-    });
+    helpText_[position].push_back(text);
     return *this;
 }
 
@@ -1168,14 +1160,49 @@ inline void Command::parseOptionsEnv_() {
                 if (currentValue.isNull() ||
                     currentSource == "default" || currentSource == "config" || currentSource == "env") {
                     if (option.required || option.optional) {
-                        emit("optionEnv:" + option.name(), envVal);
+                        emitInternalEvent_("optionEnv:" + option.name(), envVal);
                     } else {
-                        emit("optionEnv:" + option.name());
+                        emitInternalEvent_("optionEnv:" + option.name());
                     }
                 }
             }
         }
     }
+}
+
+inline void Command::onInternalEvent_(
+    const std::string& eventName,
+    std::function<void(const std::optional<std::string>&)> listener) {
+    internalEventHandlers_[eventName].push_back(std::move(listener));
+}
+
+inline void Command::emitInternalEvent_(const std::string& eventName, std::optional<std::string> value) {
+    auto it = internalEventHandlers_.find(eventName);
+    if (it == internalEventHandlers_.end()) {
+        return;
+    }
+    for (const auto& listener : it->second) {
+        listener(value);
+    }
+}
+
+inline std::string Command::renderHelpText_(const std::string& position) const {
+    auto it = helpText_.find(position);
+    if (it == helpText_.end()) {
+        return "";
+    }
+
+    std::string rendered;
+    for (const auto& text : it->second) {
+        if (text.empty()) {
+            continue;
+        }
+        rendered += text;
+        if (text.back() != '\n') {
+            rendered += '\n';
+        }
+    }
+    return rendered;
 }
 
 inline void Command::parseOptionsImplied_() {

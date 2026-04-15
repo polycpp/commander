@@ -1122,6 +1122,11 @@ private:
                                                      const std::vector<std::string>& operands,
                                                      const std::vector<std::string>& unknown);
     polycpp::Promise<void> callHooksAsync_(const std::string& event);
+    void onInternalEvent_(const std::string& eventName,
+                          std::function<void(const std::optional<std::string>&)> listener);
+    void emitInternalEvent_(const std::string& eventName,
+                            std::optional<std::string> value = std::nullopt);
+    std::string renderHelpText_(const std::string& position) const;
 
     // --- Private fields ---
 
@@ -1160,6 +1165,8 @@ private:
 
     std::unordered_map<std::string, std::vector<HookFn>> lifeCycleHooks_;
     std::unordered_map<std::string, std::vector<AsyncHookFn>> asyncLifeCycleHooks_;
+    std::unordered_map<std::string, std::vector<std::function<void(const std::optional<std::string>&)>>> internalEventHandlers_;
+    std::unordered_map<std::string, std::vector<std::string>> helpText_;
 
     OutputConfiguration outputConfiguration_;
 
