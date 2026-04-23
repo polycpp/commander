@@ -49,18 +49,20 @@ inline Command::Command(const std::string& name)
     outputConfiguration_.getOutHasColors = []() -> bool {
         if (!::isatty(STDOUT_FILENO)) return false;
         auto env = polycpp::process::env();
-        if (env.hasKey("NO_COLOR")) return false;
-        if (env.hasKey("FORCE_COLOR")) {
-            return env["FORCE_COLOR"].asString() != "0";
+        if (env.count("NO_COLOR")) return false;
+        auto it = env.find("FORCE_COLOR");
+        if (it != env.end()) {
+            return it->second != "0";
         }
         return true;
     };
     outputConfiguration_.getErrHasColors = []() -> bool {
         if (!::isatty(STDERR_FILENO)) return false;
         auto env = polycpp::process::env();
-        if (env.hasKey("NO_COLOR")) return false;
-        if (env.hasKey("FORCE_COLOR")) {
-            return env["FORCE_COLOR"].asString() != "0";
+        if (env.count("NO_COLOR")) return false;
+        auto it = env.find("FORCE_COLOR");
+        if (it != env.end()) {
+            return it->second != "0";
         }
         return true;
     };
@@ -1151,8 +1153,9 @@ inline void Command::parseOptionsEnv_() {
     auto envObj = polycpp::process::env();
     for (const auto& option : options) {
         if (option.envVar_.has_value()) {
-            if (envObj.hasKey(*option.envVar_)) {
-                std::string envVal = envObj[*option.envVar_].asString();
+            auto envIt = envObj.find(*option.envVar_);
+            if (envIt != envObj.end()) {
+                std::string envVal = envIt->second;
                 std::string optionKey = option.attributeName();
                 auto currentValue = getOptionValue(optionKey);
                 auto currentSource = getOptionValueSource(optionKey);
