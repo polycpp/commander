@@ -32,6 +32,8 @@ compile_commands.json
 # Testing artifacts
 Testing/
 CTestTestfile.cmake
+build.*.log
+*.log
 
 # Package managers / FetchContent
 _deps/
