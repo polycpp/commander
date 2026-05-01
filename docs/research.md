@@ -397,7 +397,8 @@ All of the following are in scope for v0 and implemented:
   `--no-*`, short-flag combination, and `--flag=value`
 - argument parsing, including `<required>`, `[optional]`, `<variadic...>`,
   defaults, choices, custom parsers
-- subcommands (inline action and stand-alone executable)
+- subcommands (inline action and stand-alone executable, with parent →
+  child signal forwarding for SIGUSR1, SIGUSR2, SIGTERM, SIGINT, SIGHUP)
 - env-var binding, default/preset values, choices, conflicts, implies
 - mandatory and required options
 - camelCase attribute names
