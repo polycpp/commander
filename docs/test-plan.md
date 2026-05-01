@@ -81,12 +81,13 @@ upstream cluster into the matching `tests/test_<area>.cpp`:
   - `tests/command.executableSubcommand.test.js`,
     `tests/command.executableSubcommand.lookup.test.js`,
     `tests/command.executableSubcommand.search.test.js`,
-    `tests/command.executableSubcommand.mock.test.js` →
-    `tests/test_executable.cpp` (23 cases). The new target compiles two
-    stand-alone fixture programs (`tests/fixtures/echo_argv.cpp`,
-    `tests/fixtures/exit_with_code.cpp`) into
-    `${CMAKE_BINARY_DIR}/test_fixtures/` and exercises real
-    `child_process::spawnSync` calls. Covered scenarios: default
+    `tests/command.executableSubcommand.mock.test.js`,
+    `tests/command.executableSubcommand.signals.test.js` →
+    `tests/test_executable.cpp` (32 cases). The new target compiles
+    three stand-alone fixture programs (`tests/fixtures/echo_argv.cpp`,
+    `tests/fixtures/exit_with_code.cpp`, `tests/fixtures/signal_writer.cpp`)
+    into `${CMAKE_BINARY_DIR}/test_fixtures/` and exercises real
+    `child_process::spawn` calls. Covered scenarios: default
     `<prog>-<sub>` name resolution; explicit `executableFile` (relative,
     absolute, and `./bin/...` path-containing forms); `executableDir`
     precedence over `PATH`; `executableDir` joined relative to
@@ -100,15 +101,15 @@ upstream cluster into the matching `tests/test_<area>.cpp`:
     + conflicting option checks firing **before** spawn;
     `addCommand(...)` of an executable-flagged sub still routing to the
     spawn path; `parseAsync()` reaching the same dispatch path; help
-    output listing executable subcommands.
+    output listing executable subcommands; signal forwarding for
+    SIGTERM, SIGINT, SIGHUP, SIGUSR1, and SIGUSR2 (parent → child via
+    `ChildProcess::kill(signum)`); forwarder is inactive after the
+    child exits; multiple sequential spawns each install their own
+    forwarder; user-installed `process::on(SIG, ...)` handlers coexist
+    with the per-spawn forwarder; child exit code on signal
+    (`128 + signum`) surfaces through `exitOverride()` as a
+    `CommanderError`.
 - omitted upstream cases:
-  - `tests/command.executableSubcommand.signals.test.js` — omitted; the
-    test sends `SIGTERM` to the parent and asserts the child receives
-    it. Our dispatch path uses `polycpp::child_process::spawnSync` which
-    blocks the parent thread until the child exits, leaving no
-    deterministic way to assert signal forwarding from inside a single
-    GoogleTest case. Documented as a deferred limitation in
-    `docs/divergences.md`.
   - `tests/command.executableSubcommand.inspect.test.js` — omitted;
     covers `node --inspect` argv splitting (Node-runtime specific) which
     is also deferred.

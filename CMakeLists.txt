@@ -71,7 +71,7 @@ if(POLYCPP_COMMANDER_BUILD_TESTS)
     # spawn. Build small fixture binaries (NOT linked against polycpp_commander
     # — they run in a separate process) under a known directory and pass that
     # directory in via a compile definition so the test code can resolve them.
-    foreach(fixture IN ITEMS echo_argv exit_with_code)
+    foreach(fixture IN ITEMS echo_argv exit_with_code signal_writer)
         set(fixture_target "polycpp_commander_test_executable_fixture_${fixture}")
         add_executable(${fixture_target} tests/fixtures/${fixture}.cpp)
         set_target_properties(${fixture_target} PROPERTIES
@@ -86,7 +86,8 @@ if(POLYCPP_COMMANDER_BUILD_TESTS)
         POLYCPP_COMMANDER_TEST_FIXTURE_DIR="${CMAKE_BINARY_DIR}/test_fixtures")
     add_dependencies(polycpp_commander_test_executable
         polycpp_commander_test_executable_fixture_echo_argv
-        polycpp_commander_test_executable_fixture_exit_with_code)
+        polycpp_commander_test_executable_fixture_exit_with_code
+        polycpp_commander_test_executable_fixture_signal_writer)
     gtest_discover_tests(polycpp_commander_test_executable)
 endif()
 

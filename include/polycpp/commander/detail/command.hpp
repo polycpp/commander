@@ -16,19 +16,110 @@
 #include <polycpp/process.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 #include <regex>
 #include <sstream>
 #include <stdexcept>
+#include <utility>
 
 #include <polycpp/child_process.hpp>
+#include <polycpp/event_loop.hpp>
 #include <polycpp/fs.hpp>
 #include <polycpp/path.hpp>
 #include <polycpp/process.hpp>
+#include <polycpp/timers.hpp>
 
 namespace polycpp {
 namespace commander {
+
+namespace detail_exec {
+
+/**
+ * @brief RAII helper that forwards parent-received signals to a spawned child.
+ *
+ * Mirrors the upstream commander.js behaviour where the parent process
+ * installs handlers for SIGUSR1, SIGUSR2, SIGTERM, SIGINT, and SIGHUP and
+ * forwards each one to the spawned stand-alone executable subcommand via
+ * `child.kill(signal)`.
+ *
+ * Implementation notes:
+ * - `polycpp::process::on(name, ...)` returns void (no per-listener token),
+ *   so we use a shared atomic flag to deactivate the lambda when the
+ *   forwarder goes out of scope. We deliberately do NOT call
+ *   `process::removeAllListeners()` because that would clobber any
+ *   user-installed handlers for the same signal.
+ * - The lambda captures the `ChildProcess` handle (a thin shared-ptr handle,
+ *   cheap to copy) and the `active_` flag by value so the listener remains
+ *   safe even after the forwarder is destroyed.
+ * - polycpp's `process::on(SIG, ...)` queues signals into `SignalRegistry`
+ *   but does not auto-pump them from the EventLoop. We install a short-lived
+ *   `setInterval(drainPendingSignals, 25ms)` for the lifetime of the spawn
+ *   so the forwarder lambdas actually fire while the EventLoop is blocked
+ *   inside `run()` waiting for the child's exit event. The pump is torn
+ *   down via `clearInterval` in the destructor.
+ *
+ * @since 0.1.0
+ */
+struct SignalForwarder {
+    /**
+     * @brief Install the forwarders. Must be called from the thread that owns
+     *        the polycpp event loop (signal handlers run on the loop).
+     */
+    explicit SignalForwarder(polycpp::child_process::ChildProcess child)
+        : child_(std::move(child)),
+          active_(std::make_shared<std::atomic<bool>>(true)) {
+        // Names match upstream commander.js exactly. Order is not significant.
+        static constexpr const char* kForwarded[] = {
+            "SIGUSR1", "SIGUSR2", "SIGTERM", "SIGINT", "SIGHUP",
+        };
+        for (const char* sig : kForwarded) {
+            auto active = active_;
+            auto child  = child_;
+            polycpp::process::on(sig, [active, child](int signum) mutable {
+                if (!active->load()) return; // no-op after deactivate()
+                // Best-effort forward; ignore errors (child may already be gone).
+                try { child.kill(signum); } catch (...) {}
+            });
+        }
+        // Pump pending signals from the EventLoop. polycpp does not auto-drain
+        // the SignalRegistry from `EventLoop::run()` (it relies on the user
+        // calling `drainPendingSignals` or scheduling one — see the polycpp
+        // examples under examples/docs/tutorials/process_signals.cpp). We use
+        // a 25 ms tick: small enough to feel instant, large enough to stay
+        // out of the event-loop hot path.
+        pumpHandle_ = polycpp::setInterval(
+            []() { polycpp::process::drainPendingSignals(); },
+            static_cast<int64_t>(25));
+    }
+
+    ~SignalForwarder() {
+        polycpp::clearInterval(pumpHandle_);
+        deactivate();
+    }
+
+    SignalForwarder(const SignalForwarder&) = delete;
+    SignalForwarder& operator=(const SignalForwarder&) = delete;
+    SignalForwarder(SignalForwarder&&) = delete;
+    SignalForwarder& operator=(SignalForwarder&&) = delete;
+
+    /**
+     * @brief Stop forwarding without removing the underlying listeners.
+     *        Idempotent and safe to call from any thread.
+     */
+    void deactivate() noexcept {
+        if (active_) active_->store(false);
+    }
+
+private:
+    polycpp::child_process::ChildProcess child_;
+    std::shared_ptr<std::atomic<bool>> active_;
+    polycpp::timers::Timeout pumpHandle_;
+};
+
+} // namespace detail_exec
 
 // ---- Constructor / destructor ----
 
@@ -1566,24 +1657,64 @@ inline void Command::executeSubCommand_(Command& subCommand,
     launchArgs.insert(launchArgs.end(), operands.begin(), operands.end());
     launchArgs.insert(launchArgs.end(), unknown.begin(), unknown.end());
 
-    // Spawn child process synchronously with inherited stdio
+    // Spawn the child process asynchronously and drive the EventLoop until
+    // it exits. Async spawn (rather than spawnSync) is required so the parent
+    // can react to incoming signals (SIGINT/SIGTERM/...) and forward them to
+    // the child via `ChildProcess::kill(signum)` — see SignalForwarder above.
     polycpp::child_process::SpawnOptions spawnOpts;
     spawnOpts.stdio = "inherit";
 
-    auto result = polycpp::child_process::spawnSync(resolvedPath, launchArgs, spawnOpts);
+    auto child = polycpp::child_process::spawn(resolvedPath, launchArgs, spawnOpts);
 
-    if (!result.error.empty()) {
-        if (result.errorCode == "ENOENT") {
+    // Forward parent-received signals to the child while it is running.
+    // Destroying `forwarder` deactivates the per-spawn lambdas (no-op after
+    // exit), preventing residual listeners from interfering with future
+    // spawns or with user-installed handlers.
+    detail_exec::SignalForwarder forwarder(child);
+
+    // Capture the result of the spawn lifecycle on the heap so the lambdas
+    // can safely outlive the stack frame (they run on the EventLoop thread).
+    struct ExitState {
+        bool        seen       = false;
+        int         code       = 0;
+        std::string signalName;
+        std::string spawnError;
+    };
+    auto state = std::make_shared<ExitState>();
+
+    child.on(polycpp::child_process::event::Exit,
+             [state](int code, const std::string& signalName) {
+        state->seen       = true;
+        state->code       = code;
+        state->signalName = signalName;
+        polycpp::EventLoop::instance().stop();
+    });
+    child.on(polycpp::child_process::event::Error_,
+             [state](const polycpp::Error& err) {
+        state->seen       = true;
+        state->spawnError = err.what();
+        polycpp::EventLoop::instance().stop();
+    });
+
+    // Run the EventLoop until one of the handlers above stops it. Queued
+    // signals dispatch through the SignalForwarder while we wait.
+    polycpp::EventLoop::instance().run();
+    polycpp::EventLoop::instance().restart(); // reset for the caller's next run()
+
+    forwarder.deactivate(); // child is gone; stop forwarding immediately.
+
+    if (!state->spawnError.empty()) {
+        if (state->spawnError.find("ENOENT") != std::string::npos) {
             std::string msg = "'" + execName + "' does not exist\n - searched for: " + resolvedPath;
             error(msg, {.exitCode = 1, .code = "commander.executeSubCommandAsync"});
         } else {
-            error(result.error, {.exitCode = 1, .code = "commander.executeSubCommandAsync"});
+            error(state->spawnError, {.exitCode = 1, .code = "commander.executeSubCommandAsync"});
         }
         return;
     }
 
-    if (result.status != 0) {
-        exit_(result.status, "commander.executeSubCommandAsync", "(close)");
+    if (state->code != 0) {
+        exit_(state->code, "commander.executeSubCommandAsync", "(close)");
     }
 }
 

@@ -4,7 +4,7 @@
  *
  * Targets `polycpp::commander::Command::executableCommand(...)` and the
  * dispatch path that follows it: `dispatchSubcommand_` ->
- * `executeSubCommand_` -> `findProgram_` -> `polycpp::child_process::spawnSync`.
+ * `executeSubCommand_` -> `findProgram_` -> `polycpp::child_process::spawn`.
  *
  * The cases here are adapted from upstream commander.js's
  * `tests/command.executableSubcommand.*.test.js` cluster (lookup, search,
@@ -17,6 +17,10 @@
  *   - `echo_argv`       — echoes argv (one `arg:`-prefixed line per entry)
  *                         to the file named by `$ECHO_ARGV_OUTPUT`.
  *   - `exit_with_code`  — `exit(atoi(argv[1]))`, defaults to 0.
+ *   - `signal_writer`   — installs SIGTERM/SIGINT/SIGHUP/SIGUSR1/SIGUSR2
+ *                         handlers, writes the signal name to
+ *                         `$SIGNAL_WRITER_OUTPUT` and exits with `128+signum`.
+ *                         Used to verify parent → child signal forwarding.
  *
  * Tests that need the parent program to spawn `<prog>-<sub>` create a
  * symlink to one of those fixtures inside a per-test temp directory and
@@ -32,6 +36,8 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
+#include <csignal>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -40,6 +46,7 @@
 #include <string>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <thread>
 #include <unistd.h>
 #include <vector>
 
@@ -755,16 +762,12 @@ TEST(ExecutableSubcommand, AddCommandWithExecutableHandlerDispatches) {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// 20. Signal forwarding — DOCUMENTED LIMITATION (skipped, deterministic).
+// 20. Signal forwarding — see the dedicated cluster at the bottom of this
+// file (TEST(ExecutableSubcommand, Forwards*) and friends). The dispatch
+// path now uses async `polycpp::child_process::spawn()` and forwards
+// SIGUSR1/SIGUSR2/SIGTERM/SIGINT/SIGHUP from the parent to the child via
+// `child.kill(signum)`, mirroring upstream commander.js's `signals.forEach`.
 // ──────────────────────────────────────────────────────────────────────
-//
-// Upstream's signals test sends SIGTERM to the parent and verifies the
-// child receives it. With `polycpp::child_process::spawnSync` (which is
-// what `executeSubCommand_` uses), the parent thread is blocked inside the
-// sync wait until the child exits, so any signal-forwarding test would
-// either need a real subprocess parent or a non-deterministic timer.
-// We deliberately omit this case rather than write a flaky test; the
-// behaviour is documented in `docs/divergences.md` under deferred features.
 
 // ──────────────────────────────────────────────────────────────────────
 // Substitute case A: parseAsync also reaches the spawn path.
@@ -859,4 +862,288 @@ TEST(ExecutableSubcommand, OperandsAfterDoubleDashStillForwarded) {
         if (l == "arg:--flag-like-operand") { seen = true; break; }
     }
     EXPECT_TRUE(seen) << "operand after -- should reach the child";
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Signal forwarding cluster.
+//
+// Replaces the upstream `tests/command.executableSubcommand.signals.test.js`
+// case that was previously omitted. The dispatch path now uses async
+// `polycpp::child_process::spawn()`, installs `process::on(<sig>, ...)`
+// handlers for each of {SIGUSR1, SIGUSR2, SIGTERM, SIGINT, SIGHUP}, and
+// drives the polycpp EventLoop until the child exits — matching upstream
+// commander.js's `signals.forEach(sig => process.on(sig, ...))` pattern.
+//
+// Test pattern: each test
+//   1. installs the `signal_writer` fixture under a per-test sandbox name,
+//   2. wires `$SIGNAL_WRITER_OUTPUT` and `$SIGNAL_WRITER_READY` to that
+//      sandbox so the fixture's signal-handler-side write is observable,
+//   3. spins a sender `std::thread` that polls for the READY file then
+//      sends the chosen signal to the parent process,
+//   4. calls `parse({sub}, {.from = "user"})` — which spawns the fixture
+//      and blocks on the EventLoop until the fixture exits,
+//   5. joins the sender and asserts the OUTPUT file contains the expected
+//      signal name.
+//
+// The polling loop has a 2-second total timeout (400 iterations of 5ms);
+// exceeding it means the spawn pipeline stalled, which is a real bug.
+// ──────────────────────────────────────────────────────────────────────
+
+namespace {
+
+/// @brief Async-safe-ish file existence check used by the sender thread.
+bool fileExists(const std::string& path) {
+    struct stat st;
+    return ::stat(path.c_str(), &st) == 0;
+}
+
+/// @brief Read the full contents of a file as a string. Returns "" if absent.
+std::string readFile(const std::string& path) {
+    std::ifstream in(path);
+    if (!in) return {};
+    std::ostringstream buf;
+    buf << in.rdbuf();
+    return buf.str();
+}
+
+/// @brief Block until `path` exists or the deadline expires.
+/// @param path        Filesystem path to poll for.
+/// @param deadline_ms Total budget in milliseconds (default 2000 = 2 seconds).
+/// @return true if the path appeared in time, false on timeout.
+bool waitForFile(const std::string& path, int deadline_ms = 2000) {
+    using namespace std::chrono;
+    auto deadline = steady_clock::now() + milliseconds(deadline_ms);
+    while (steady_clock::now() < deadline) {
+        if (fileExists(path)) return true;
+        std::this_thread::sleep_for(milliseconds(5));
+    }
+    return fileExists(path);
+}
+
+/**
+ * @brief Drive a single signal-forwarding scenario.
+ * @param sub        The subcommand name (also used to derive the executable
+ *                   name `<prog>-<sub>` installed in the sandbox).
+ * @param prog       The program name passed to `Command(...)`.
+ * @param signum     The signal the sender thread sends to the parent (which
+ *                   the dispatch path is expected to forward to the child).
+ * @param expectName The substring to find in the captured output (e.g.
+ *                   "SIGTERM" — the fixture writes the name with a newline).
+ *
+ * Asserts the captured output contains the expected name. Uses gtest's
+ * non-fatal `EXPECT_*` so the sender thread always gets joined.
+ */
+void runSignalForwardingCase(const std::string& prog,
+                             const std::string& sub,
+                             int signum,
+                             const std::string& expectName) {
+    Sandbox sb;
+    const std::string execName = prog + "-" + sub;
+    sb.installFixture("signal_writer", execName);
+
+    const std::string outPath   = sb.file("out");
+    const std::string readyPath = sb.file("ready");
+    polycpp::process::setenv("SIGNAL_WRITER_OUTPUT", outPath);
+    polycpp::process::setenv("SIGNAL_WRITER_READY",  readyPath);
+    struct EnvCleanup {
+        ~EnvCleanup() {
+            polycpp::process::unsetenv("SIGNAL_WRITER_OUTPUT");
+            polycpp::process::unsetenv("SIGNAL_WRITER_READY");
+        }
+    } envCleanup;
+
+    Command cmd(prog);
+    cmd.exitOverride();
+    quiet(cmd);
+    cmd.executableDir(sb.path().string());
+    cmd.executableCommand(sub, "send a signal to me");
+
+    // Sender thread: wait for the child to be ready, then signal the parent.
+    std::atomic<bool> readySeen{false};
+    std::thread sender([&] {
+        if (!waitForFile(readyPath)) {
+            // Child never wrote the ready marker — let the test fail loudly
+            // when it inspects readySeen.
+            return;
+        }
+        readySeen = true;
+        ::kill(::getpid(), signum);
+    });
+
+    // The fixture exits with 128+signum, so commander surfaces a non-zero
+    // exit through CommanderError under exitOverride().
+    auto err = parseUserCatching(cmd, {sub});
+
+    sender.join();
+
+    EXPECT_TRUE(readySeen) << "signal_writer never reached its READY marker";
+    if (err.has_value()) {
+        EXPECT_EQ(err->code, "commander.executeSubCommandAsync");
+        EXPECT_EQ(err->exitCode, 128 + signum) << err->what();
+    } else {
+        ADD_FAILURE() << "expected non-zero exit propagation under exitOverride()";
+    }
+
+    auto contents = readFile(outPath);
+    EXPECT_NE(contents.find(expectName), std::string::npos)
+        << "captured output: " << contents;
+}
+
+} // namespace
+
+TEST(ExecutableSubcommand, ForwardsSIGTERM) {
+    runSignalForwardingCase("sigprog", "term", SIGTERM, "SIGTERM");
+}
+
+TEST(ExecutableSubcommand, ForwardsSIGINT) {
+    runSignalForwardingCase("sigprog", "intsub", SIGINT, "SIGINT");
+}
+
+TEST(ExecutableSubcommand, ForwardsSIGHUP) {
+    runSignalForwardingCase("sigprog", "hup", SIGHUP, "SIGHUP");
+}
+
+TEST(ExecutableSubcommand, ForwardsSIGUSR1) {
+    runSignalForwardingCase("sigprog", "usr1", SIGUSR1, "SIGUSR1");
+}
+
+TEST(ExecutableSubcommand, ForwardsSIGUSR2) {
+    runSignalForwardingCase("sigprog", "usr2", SIGUSR2, "SIGUSR2");
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// After the child exits cleanly, the per-spawn forwarder lambda must
+// no-op — sending a signal to the parent should NOT be forwarded to a
+// (now-dead) child PID, and the parent process must remain alive.
+// ──────────────────────────────────────────────────────────────────────
+
+TEST(ExecutableSubcommand, ForwarderInactiveAfterChildExit) {
+    Sandbox sb;
+    sb.installFixture("exit_with_code", "doneprog-bye");
+
+    Command cmd("doneprog");
+    cmd.exitOverride();
+    cmd.executableDir(sb.path().string());
+    cmd.executableCommand("bye", "exit cleanly");
+
+    // The fixture exits 0 immediately; parse() returns normally.
+    EXPECT_NO_THROW(cmd.parse({"bye"}, {.from = "user"}));
+
+    // After parse() returns, the forwarder is destructed and its lambdas are
+    // marked inactive. The lambdas remain on the SignalRegistry though, so a
+    // SIGUSR1 to the parent still dispatches them on the next event loop
+    // run. We install a backstop user handler that flips a flag so we can
+    // confirm the signal arrived AND the parent survived.
+    std::atomic<bool> backstopFired{false};
+    polycpp::process::on("SIGUSR1", [&](int) { backstopFired = true; });
+
+    ::kill(::getpid(), SIGUSR1);
+    polycpp::process::drainPendingSignals();
+
+    EXPECT_TRUE(backstopFired) << "user handler should still fire";
+    // The fact that we're still executing here is itself the assertion that
+    // the no-op forwarder did not crash trying to kill a dead PID.
+    SUCCEED();
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Multiple sequential spawns: each must install its own active forwarder,
+// and residual no-op lambdas from the first spawn must not interfere.
+// ──────────────────────────────────────────────────────────────────────
+
+TEST(ExecutableSubcommand, MultipleSpawnsEachInstallTheirOwnForwarder) {
+    runSignalForwardingCase("multprog", "term1", SIGTERM, "SIGTERM");
+    runSignalForwardingCase("multprog", "term2", SIGTERM, "SIGTERM");
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// User-installed signal handler must coexist with the dispatch-path
+// forwarder. Validates the no-clobber design (we use a per-spawn active
+// flag instead of process::removeAllListeners(name)).
+// ──────────────────────────────────────────────────────────────────────
+
+TEST(ExecutableSubcommand, SignalForwardingPreservesUserHandler) {
+    // Install user handler BEFORE the dispatch path adds its forwarder.
+    std::atomic<int> userFires{0};
+    polycpp::process::on("SIGUSR1", [&](int) { userFires.fetch_add(1); });
+
+    Sandbox sb;
+    sb.installFixture("signal_writer", "userprog-go");
+
+    const std::string outPath   = sb.file("out");
+    const std::string readyPath = sb.file("ready");
+    polycpp::process::setenv("SIGNAL_WRITER_OUTPUT", outPath);
+    polycpp::process::setenv("SIGNAL_WRITER_READY",  readyPath);
+    struct EnvCleanup {
+        ~EnvCleanup() {
+            polycpp::process::unsetenv("SIGNAL_WRITER_OUTPUT");
+            polycpp::process::unsetenv("SIGNAL_WRITER_READY");
+        }
+    } envCleanup;
+
+    Command cmd("userprog");
+    cmd.exitOverride();
+    quiet(cmd);
+    cmd.executableDir(sb.path().string());
+    cmd.executableCommand("go", "send a signal");
+
+    std::thread sender([&] {
+        if (!waitForFile(readyPath)) return;
+        ::kill(::getpid(), SIGUSR1);
+    });
+
+    auto err = parseUserCatching(cmd, {"go"});
+    sender.join();
+
+    // Forwarded to child:
+    EXPECT_NE(readFile(outPath).find("SIGUSR1"), std::string::npos);
+    // Surfaced as a non-zero exit because fixture exited with 128+SIGUSR1:
+    ASSERT_TRUE(err.has_value());
+    EXPECT_EQ(err->exitCode, 128 + SIGUSR1);
+
+    // User handler also fired. (drainPendingSignals is a no-op if the
+    // EventLoop already drained the queue, but we run it for good measure.)
+    polycpp::process::drainPendingSignals();
+    EXPECT_GE(userFires.load(), 1)
+        << "user-installed SIGUSR1 handler must still fire alongside the forwarder";
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Standalone exit-code surfacing: 128 + SIGTERM under exitOverride().
+// Mirrors the upstream signals.test assertion that the "(close)" exit
+// code is propagated through commander's exit handling.
+// ──────────────────────────────────────────────────────────────────────
+
+TEST(ExecutableSubcommand, ExitCodeAfterSIGTERM) {
+    Sandbox sb;
+    sb.installFixture("signal_writer", "exitprog-go");
+
+    const std::string outPath   = sb.file("out");
+    const std::string readyPath = sb.file("ready");
+    polycpp::process::setenv("SIGNAL_WRITER_OUTPUT", outPath);
+    polycpp::process::setenv("SIGNAL_WRITER_READY",  readyPath);
+    struct EnvCleanup {
+        ~EnvCleanup() {
+            polycpp::process::unsetenv("SIGNAL_WRITER_OUTPUT");
+            polycpp::process::unsetenv("SIGNAL_WRITER_READY");
+        }
+    } envCleanup;
+
+    Command cmd("exitprog");
+    cmd.exitOverride();
+    quiet(cmd);
+    cmd.executableDir(sb.path().string());
+    cmd.executableCommand("go", "exit on signal");
+
+    std::thread sender([&] {
+        if (!waitForFile(readyPath)) return;
+        ::kill(::getpid(), SIGTERM);
+    });
+
+    auto err = parseUserCatching(cmd, {"go"});
+    sender.join();
+
+    ASSERT_TRUE(err.has_value());
+    EXPECT_EQ(err->code, "commander.executeSubCommandAsync");
+    EXPECT_EQ(err->exitCode, 128 + SIGTERM);
 }
