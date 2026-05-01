@@ -16,14 +16,14 @@ Legend:
 
 - [x] target repo scaffolded
 - [x] GitHub repo created under `polycpp`
-- [ ] GitHub repo visibility verified private
+- [x] GitHub repo visibility verified private
 - GitHub repo URL: https://github.com/polycpp/commander
-- GitHub repo private: no
-- libgen catch-up note: this repo predates libgen and is already public on
-  GitHub. The libgen `--strict` gate requires `private: yes`; that gate
-  cannot be satisfied in retrospect. The repo passed the public-release
-  criteria informally before libgen existed. Future companions must follow
-  the private-first workflow (`scripts/create-private-repo.py`).
+- GitHub repo private: yes
+- libgen catch-up note: this repo predates libgen. It was originally
+  created as public on GitHub before libgen's private-first workflow
+  existed. Returned to private as part of the libgen catch-up so the
+  `--strict` gate passes; will be re-published as public via
+  `scripts/publish-public-repo.py` once a release candidate is ready.
 - [x] baseline readiness passed
 - [x] upstream repo cloned or updated locally
 - [x] upstream revision recorded in `docs/research.md`
@@ -139,12 +139,14 @@ Legend:
 
 ## Public Release
 
+The libgen catch-up landed; the repo is back to private until the next
+release decision. Re-publish via `scripts/publish-public-repo.py` once
+a release candidate is ready (the public-readiness gate already passes).
+
 - [x] production-grade quality confirmed
 - [x] public documentation ready
 - [x] generated docs placeholder pages replaced with real public documentation
 - [x] public docs do not contain local absolute paths
 - [x] `python3 docs/build.py` passes
 - [x] third-party license notices complete
-- [x] GitHub repo visibility changed to public
-  (already public on GitHub; visibility was changed before libgen existed.
-  Future companions must follow the private-first workflow.)
+- [ ] GitHub repo visibility changed to public
