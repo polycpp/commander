@@ -40,8 +40,7 @@ struct PrepareContextOptions {
  * @par Example
  * @code{.cpp}
  *   Help help;
- *   help.helpWidth = 80;
- *   help.sortOptions = true;
+ *   help.helpWidth(80).sortOptions(true);
  *   std::string text = help.formatHelp(cmd, help);
  * @endcode
  *
@@ -50,6 +49,30 @@ struct PrepareContextOptions {
  */
 class Help {
 public:
+    /**
+     * @brief Aggregate of optional configuration knobs for Help.
+     *
+     * Mirrors the object commander.js's `configureHelp({...})` accepts:
+     * each field is optional, and only those that are set override the
+     * corresponding Help field when passed to Help::configure().
+     *
+     * @par Example
+     * @code{.cpp}
+     *   Help help;
+     *   help.configure({.sortOptions = true, .helpWidth = 100});
+     * @endcode
+     * @see https://github.com/tj/commander.js#custom-help
+     * @since 0.1.0
+     */
+    struct HelpConfiguration {
+        std::optional<int> helpWidth;            ///< Override Help::helpWidth().
+        std::optional<int> minWidthToWrap;       ///< Override Help::minWidthToWrap().
+        std::optional<bool> sortSubcommands;     ///< Override Help::sortSubcommands().
+        std::optional<bool> sortOptions;         ///< Override Help::sortOptions().
+        std::optional<bool> showGlobalOptions;   ///< Override Help::showGlobalOptions().
+        std::optional<bool> outputHasColors;     ///< Override Help::outputHasColors().
+    };
+
     /**
      * @brief Construct a Help with default configuration.
      * @since 0.1.0
@@ -62,31 +85,179 @@ public:
      */
     virtual ~Help() = default;
 
-    // --- Configuration properties ---
+    // --- Configuration accessors ---
 
-    /// @brief Display width for wrapping help text. 0 means use default (80).
-    /// @since 0.1.0
-    int helpWidth = 0;
+    /**
+     * @brief Get the display width for wrapping help text.
+     *
+     * 0 means "use the default (80)" until prepareContext() resolves it.
+     *
+     * @return Current help width.
+     * @par Example
+     * @code{.cpp}
+     *   int w = help.helpWidth();
+     * @endcode
+     * @see https://github.com/tj/commander.js#custom-help
+     * @since 0.1.0
+     */
+    int helpWidth() const { return helpWidth_; }
 
-    /// @brief Minimum width before wrapping is applied.
-    /// @since 0.1.0
-    int minWidthToWrap = 40;
+    /**
+     * @brief Set the display width for wrapping help text.
+     * @param width New help width. 0 defers to the runtime default.
+     * @return Reference to this Help for chaining.
+     * @par Example
+     * @code{.cpp}
+     *   help.helpWidth(100);
+     * @endcode
+     * @see https://github.com/tj/commander.js#custom-help
+     * @since 0.1.0
+     */
+    Help& helpWidth(int width) { helpWidth_ = width; return *this; }
 
-    /// @brief Whether to sort subcommands alphabetically.
-    /// @since 0.1.0
-    bool sortSubcommands = false;
+    /**
+     * @brief Get the minimum width before wrapping is applied.
+     * @return Minimum wrap width.
+     * @par Example
+     * @code{.cpp}
+     *   int w = help.minWidthToWrap();
+     * @endcode
+     * @see https://github.com/tj/commander.js#custom-help
+     * @since 0.1.0
+     */
+    int minWidthToWrap() const { return minWidthToWrap_; }
 
-    /// @brief Whether to sort options alphabetically.
-    /// @since 0.1.0
-    bool sortOptions = false;
+    /**
+     * @brief Set the minimum width before wrapping is applied.
+     * @param width New minimum-to-wrap width.
+     * @return Reference to this Help for chaining.
+     * @par Example
+     * @code{.cpp}
+     *   help.minWidthToWrap(20);
+     * @endcode
+     * @see https://github.com/tj/commander.js#custom-help
+     * @since 0.1.0
+     */
+    Help& minWidthToWrap(int width) { minWidthToWrap_ = width; return *this; }
 
-    /// @brief Whether to show global options from parent commands.
-    /// @since 0.1.0
-    bool showGlobalOptions = false;
+    /**
+     * @brief Get whether subcommands are sorted alphabetically.
+     * @return True when subcommands are sorted on display.
+     * @par Example
+     * @code{.cpp}
+     *   bool sorted = help.sortSubcommands();
+     * @endcode
+     * @see https://github.com/tj/commander.js#custom-help
+     * @since 0.1.0
+     */
+    bool sortSubcommands() const { return sortSubcommands_; }
 
-    /// @brief Whether the output supports ANSI color codes.
-    /// @since 0.1.0
-    bool outputHasColors = false;
+    /**
+     * @brief Set whether subcommands are sorted alphabetically.
+     * @param value True to sort subcommands on display.
+     * @return Reference to this Help for chaining.
+     * @par Example
+     * @code{.cpp}
+     *   help.sortSubcommands(true);
+     * @endcode
+     * @see https://github.com/tj/commander.js#custom-help
+     * @since 0.1.0
+     */
+    Help& sortSubcommands(bool value) { sortSubcommands_ = value; return *this; }
+
+    /**
+     * @brief Get whether options are sorted alphabetically.
+     * @return True when options are sorted on display.
+     * @par Example
+     * @code{.cpp}
+     *   bool sorted = help.sortOptions();
+     * @endcode
+     * @see https://github.com/tj/commander.js#custom-help
+     * @since 0.1.0
+     */
+    bool sortOptions() const { return sortOptions_; }
+
+    /**
+     * @brief Set whether options are sorted alphabetically.
+     * @param value True to sort options on display.
+     * @return Reference to this Help for chaining.
+     * @par Example
+     * @code{.cpp}
+     *   help.sortOptions(true);
+     * @endcode
+     * @see https://github.com/tj/commander.js#custom-help
+     * @since 0.1.0
+     */
+    Help& sortOptions(bool value) { sortOptions_ = value; return *this; }
+
+    /**
+     * @brief Get whether global options from parent commands are shown.
+     * @return True when global options are included in subcommand help.
+     * @par Example
+     * @code{.cpp}
+     *   bool shown = help.showGlobalOptions();
+     * @endcode
+     * @see https://github.com/tj/commander.js#custom-help
+     * @since 0.1.0
+     */
+    bool showGlobalOptions() const { return showGlobalOptions_; }
+
+    /**
+     * @brief Set whether global options from parent commands are shown.
+     * @param value True to include global options in subcommand help.
+     * @return Reference to this Help for chaining.
+     * @par Example
+     * @code{.cpp}
+     *   help.showGlobalOptions(true);
+     * @endcode
+     * @see https://github.com/tj/commander.js#custom-help
+     * @since 0.1.0
+     */
+    Help& showGlobalOptions(bool value) { showGlobalOptions_ = value; return *this; }
+
+    /**
+     * @brief Get whether the output supports ANSI color codes.
+     * @return True when style methods should emit ANSI sequences.
+     * @par Example
+     * @code{.cpp}
+     *   bool color = help.outputHasColors();
+     * @endcode
+     * @see https://github.com/tj/commander.js#custom-help
+     * @since 0.1.0
+     */
+    bool outputHasColors() const { return outputHasColors_; }
+
+    /**
+     * @brief Set whether the output supports ANSI color codes.
+     * @param value True if the output target accepts ANSI styling.
+     * @return Reference to this Help for chaining.
+     * @par Example
+     * @code{.cpp}
+     *   help.outputHasColors(true);
+     * @endcode
+     * @see https://github.com/tj/commander.js#custom-help
+     * @since 0.1.0
+     */
+    Help& outputHasColors(bool value) { outputHasColors_ = value; return *this; }
+
+    /**
+     * @brief Apply a batch configuration.
+     *
+     * Each field of @p cfg that is engaged (`std::optional::has_value()`)
+     * overrides the corresponding internal value; unset fields are left
+     * untouched. This mirrors commander.js's `configureHelp({...})` shape
+     * by accepting the same set of knobs in one call.
+     *
+     * @param cfg Configuration overrides.
+     * @return Reference to this Help for chaining.
+     * @par Example
+     * @code{.cpp}
+     *   help.configure({.sortOptions = true, .helpWidth = 100});
+     * @endcode
+     * @see https://github.com/tj/commander.js#custom-help
+     * @since 0.1.0
+     */
+    Help& configure(const HelpConfiguration& cfg);
 
     // --- Prepare context ---
 
@@ -570,6 +741,14 @@ public:
      * @since 0.1.0
      */
     virtual std::string formatHelp(const Command& cmd, const Help& helper) const;
+
+private:
+    int helpWidth_ = 0;            ///< Display width; 0 defers to runtime default.
+    int minWidthToWrap_ = 40;      ///< Minimum width before wrapping is applied.
+    bool sortSubcommands_ = false; ///< Sort subcommands alphabetically when set.
+    bool sortOptions_ = false;     ///< Sort options alphabetically when set.
+    bool showGlobalOptions_ = false; ///< Include parent-command options in subcommand help.
+    bool outputHasColors_ = false; ///< Output supports ANSI color codes.
 };
 
 /**

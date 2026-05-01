@@ -13,7 +13,7 @@ TEST(HelpTest, BoxWrapBasic) {
 
 TEST(HelpTest, BoxWrapWraps) {
     Help help;
-    help.minWidthToWrap = 5;  // lower threshold so we can test with width=8
+    help.minWidthToWrap(5);  // lower threshold so we can test with width=8
     auto result = help.boxWrap("aaa bbb ccc ddd", 8);
     // Should wrap after ~8 chars
     EXPECT_NE(result.find('\n'), std::string::npos);
@@ -21,7 +21,7 @@ TEST(HelpTest, BoxWrapWraps) {
 
 TEST(HelpTest, BoxWrapTooNarrow) {
     Help help;
-    help.minWidthToWrap = 40;
+    help.minWidthToWrap(40);
     auto result = help.boxWrap("hello world foo bar", 20);
     // Width < minWidthToWrap, no wrapping
     EXPECT_EQ(result, "hello world foo bar");
@@ -83,7 +83,7 @@ TEST(HelpTest, StripColorNoAnsi) {
 
 TEST(HelpTest, FormatItemShortTerm) {
     Help help;
-    help.helpWidth = 80;
+    help.helpWidth(80);
     auto result = help.formatItem("-v", 10, "verbose output");
     // Should have 2-char indent, padded term, 2-space spacer, description
     EXPECT_NE(result.find("-v"), std::string::npos);
@@ -98,8 +98,8 @@ TEST(HelpTest, FormatItemNoDescription) {
 
 TEST(HelpTest, FormatItemLongDescription) {
     Help help;
-    help.helpWidth = 40;
-    help.minWidthToWrap = 5;  // lower threshold to allow wrapping in short space
+    help.helpWidth(40);
+    help.minWidthToWrap(5);  // lower threshold to allow wrapping in short space
     auto result = help.formatItem("-v", 5, "this is a very long description that should wrap");
     EXPECT_NE(result.find('\n'), std::string::npos);
 }
@@ -192,7 +192,7 @@ TEST(HelpTest, SortOptions) {
     cmd.option("-a, --alpha", "alpha");
 
     Help help;
-    help.sortOptions = true;
+    help.sortOptions(true);
     auto opts = help.visibleOptions(cmd);
 
     // Find positions
@@ -262,7 +262,7 @@ TEST(HelpTest, CommandUsageWithAlias) {
 
 TEST(HelpTest, StyleMethodsNoColor) {
     Help help;
-    help.outputHasColors = false;
+    help.outputHasColors(false);
     EXPECT_EQ(help.styleTitle("Options:"), "Options:");
     EXPECT_EQ(help.styleUsage("myapp [options]"), "myapp [options]");
     EXPECT_EQ(help.styleOptionTerm("-v"), "-v");
@@ -279,7 +279,7 @@ TEST(HelpTest, StyleMethodsNoColor) {
 
 TEST(HelpTest, StyleMethodsWithColor) {
     Help help;
-    help.outputHasColors = true;
+    help.outputHasColors(true);
 
     // Title should be bold
     auto title = help.styleTitle("Options:");
@@ -313,7 +313,7 @@ TEST(HelpTest, StyleMethodsWithColor) {
 
 TEST(HelpTest, StyleMethodsEmptyString) {
     Help help;
-    help.outputHasColors = true;
+    help.outputHasColors(true);
     // Empty strings should remain empty even with colors enabled
     EXPECT_EQ(help.styleTitle(""), "");
     EXPECT_EQ(help.styleOptionTerm(""), "");
@@ -334,24 +334,72 @@ TEST(HelpTest, DisplayWidthIgnoresAnsiCodes) {
 TEST(HelpTest, PrepareContextWithOptions) {
     Help help;
     help.prepareContext({.helpWidth = 120, .outputHasColors = true});
-    EXPECT_EQ(help.helpWidth, 120);
-    EXPECT_TRUE(help.outputHasColors);
+    EXPECT_EQ(help.helpWidth(), 120);
+    EXPECT_TRUE(help.outputHasColors());
 }
 
 TEST(HelpTest, PrepareContextWithOptionsDefaultWidth) {
     Help help;
     help.prepareContext({.helpWidth = 0, .outputHasColors = false});
-    EXPECT_EQ(help.helpWidth, 80);
-    EXPECT_FALSE(help.outputHasColors);
+    EXPECT_EQ(help.helpWidth(), 80);
+    EXPECT_FALSE(help.outputHasColors());
 }
 
 TEST(HelpTest, PrepareContextPreservesExistingWidth) {
     Help help;
-    help.helpWidth = 100;
+    help.helpWidth(100);
     help.prepareContext({.helpWidth = 60, .outputHasColors = true});
     // helpWidth was already set, should not be overwritten
-    EXPECT_EQ(help.helpWidth, 100);
-    EXPECT_TRUE(help.outputHasColors);
+    EXPECT_EQ(help.helpWidth(), 100);
+    EXPECT_TRUE(help.outputHasColors());
+}
+
+// ============ Fluent setters and configure() ============
+
+TEST(HelpTest, FluentSettersChain) {
+    Help help;
+    Help& ref = help.helpWidth(100)
+                    .minWidthToWrap(20)
+                    .sortSubcommands(true)
+                    .sortOptions(true)
+                    .showGlobalOptions(true)
+                    .outputHasColors(true);
+    EXPECT_EQ(&ref, &help);
+    EXPECT_EQ(help.helpWidth(), 100);
+    EXPECT_EQ(help.minWidthToWrap(), 20);
+    EXPECT_TRUE(help.sortSubcommands());
+    EXPECT_TRUE(help.sortOptions());
+    EXPECT_TRUE(help.showGlobalOptions());
+    EXPECT_TRUE(help.outputHasColors());
+}
+
+TEST(HelpTest, ConfigureAppliesOnlyEngagedFields) {
+    Help help;
+    help.helpWidth(50).sortOptions(true);
+    help.configure({.helpWidth = 200, .sortSubcommands = true});
+    // Engaged fields applied:
+    EXPECT_EQ(help.helpWidth(), 200);
+    EXPECT_TRUE(help.sortSubcommands());
+    // Untouched field preserved:
+    EXPECT_TRUE(help.sortOptions());
+    // Other defaults remain:
+    EXPECT_EQ(help.minWidthToWrap(), 40);
+    EXPECT_FALSE(help.showGlobalOptions());
+    EXPECT_FALSE(help.outputHasColors());
+}
+
+TEST(HelpTest, ConfigureWithEmptyConfigIsNoOp) {
+    Help help;
+    help.helpWidth(60);
+    help.configure({});
+    EXPECT_EQ(help.helpWidth(), 60);
+}
+
+TEST(HelpTest, ConfigureReturnsReference) {
+    Help help;
+    Help& ref = help.configure({.helpWidth = 70});
+    EXPECT_EQ(&ref, &help);
+    EXPECT_EQ(help.helpWidth(), 70);
 }
 
 // ============ FormatHelp with colors ============

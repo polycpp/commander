@@ -84,7 +84,9 @@
 | `Argument#argParser(fn)` | `Argument::argParser(ParseFn)` | direct | |
 | `Argument#choices(arr)` | `Argument::choices(vec)` | direct | |
 | `Argument#argRequired()` / `argOptional()` | `Argument::argRequired()` / `argOptional()` | direct | |
-| `Help#helpWidth`, `sortOptions`, ... (fields) | `Help::helpWidth`, `Help::sortOptions`, ... | direct | Public fields, identical names. |
+| `Help#helpWidth`, `sortOptions`, ... (read) | `Help::helpWidth()`, `Help::sortOptions()`, `Help::sortSubcommands()`, `Help::showGlobalOptions()`, `Help::outputHasColors()`, `Help::minWidthToWrap()` | direct | Const getters; dual getter/setter style matching `Command::name()`. The underlying fields are private. |
+| `Help#helpWidth = N`, `sortOptions = b`, ... (write) | `Help::helpWidth(int)`, `Help::sortOptions(bool)`, `Help::sortSubcommands(bool)`, `Help::showGlobalOptions(bool)`, `Help::outputHasColors(bool)`, `Help::minWidthToWrap(int)` | direct | Fluent setters returning `Help&` for chaining. Replaces upstream's direct field assignment. |
+| `Help#configureHelp({...})` (object form, applied through `Command#configureHelp`) | `Help::HelpConfiguration` + `Help::configure(HelpConfiguration)` | adapted | Typed struct with `std::optional` fields stands in for the untyped JS object; only engaged fields override. |
 | `Help#prepareContext(width)` | `Help::prepareContext(width)` / `prepareContext(PrepareContextOptions)` | direct | Two overloads. |
 | `Help#formatHelp(cmd, helper)` | `Help::formatHelp(cmd, helper)` | direct | |
 | `Help#wrap(...)`, `padWidth(...)`, ... | identical names on `Help::*` | direct | |

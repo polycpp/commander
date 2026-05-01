@@ -96,4 +96,9 @@ guidance documents (`companion-patterns.md`,
 | Severity | File | Description | Classification |
 |---|---|---|---|
 | low | `include/polycpp/commander/command.hpp:1010-1036` | `Command` has many public mutable fields (`commands`, `options`, `parent`, `registeredArguments`, `args`, `rawArgs`, `processedArgs`). Mirrors upstream's JS object property shape. Direct mutation could leave a `Command` in an inconsistent state. | behavior change (accepted for upstream parity) |
-| low | `include/polycpp/commander/help.hpp` | `Help` exposes configuration as public mutable fields (`helpWidth`, `sortOptions`, etc.) rather than via a config struct. Mirrors upstream. | behavior change (accepted for upstream parity) |
+
+## Resolved (post-catch-up)
+
+| Severity | File | Description | Resolution |
+|---|---|---|---|
+| low | `include/polycpp/commander/help.hpp` | `Help` exposed configuration as public mutable fields (`helpWidth`, `sortOptions`, `sortSubcommands`, `showGlobalOptions`, `outputHasColors`, `minWidthToWrap`). Direct field assignment let callers leave a `Help` instance in inconsistent or surprising states and bypassed any future validation. Upstream JS uses the same field-property shape, but the C++ port can offer a stricter surface without losing parity. | The six fields are now private. Public access is via const getters (`helpWidth()`, `sortOptions()`, ...) and fluent setters (`helpWidth(int)`, `sortOptions(bool)`, ...) that match the dual getter/setter style already used on `Command::name()` etc. A new `Help::HelpConfiguration` struct + `Help::configure(HelpConfiguration)` provides the batch-setter ergonomics commander.js's `configureHelp({...})` is built around. `Command::configureHelp(map)` is unchanged at the surface; its internals route through the fluent setters. **Source-incompatible** for any user who wrote `help.helpWidth = 80` directly — switch to `help.helpWidth(80)`. No deprecated public-field aliases were added; this is a clean break. |

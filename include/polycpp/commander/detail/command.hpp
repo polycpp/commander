@@ -942,16 +942,16 @@ inline Command& Command::combineFlagAndOptionalValue(bool combine) {
 
 inline Help Command::createHelp() const {
     Help help;
-    // Apply configuration
+    // Apply configuration via the fluent setters.
     for (const auto& [key, val] : helpConfiguration_) {
         if (key == "helpWidth" && val.isNumber()) {
-            help.helpWidth = val.asInt();
+            help.helpWidth(val.asInt());
         } else if (key == "sortSubcommands" && val.isBool()) {
-            help.sortSubcommands = val.asBool();
+            help.sortSubcommands(val.asBool());
         } else if (key == "sortOptions" && val.isBool()) {
-            help.sortOptions = val.asBool();
+            help.sortOptions(val.asBool());
         } else if (key == "showGlobalOptions" && val.isBool()) {
-            help.showGlobalOptions = val.asBool();
+            help.showGlobalOptions(val.asBool());
         }
     }
     return help;

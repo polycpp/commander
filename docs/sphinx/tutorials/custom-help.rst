@@ -36,6 +36,29 @@ Alphabetised option lists are the single biggest usability win on CLIs
 with more than ~8 flags, and ``showGlobalOptions`` surfaces inherited
 options (``--verbose``, ``--file``) inside each subcommand's help page.
 
+If you are building a :cpp:class:`Help <polycpp::commander::Help>`
+instance directly — for example inside a subclass's ``createHelp()``
+override — you can configure it with the typed
+:cpp:struct:`HelpConfiguration
+<polycpp::commander::Help::HelpConfiguration>` aggregate, or chain the
+fluent setters:
+
+.. code-block:: cpp
+
+   polycpp::commander::Help help;
+   help.configure({
+       .helpWidth         = 100,
+       .sortSubcommands   = true,
+       .sortOptions       = true,
+       .showGlobalOptions = true,
+   });
+
+   // or, equivalently, with the fluent setters:
+   help.helpWidth(100)
+       .sortSubcommands(true)
+       .sortOptions(true)
+       .showGlobalOptions(true);
+
 Step 2 — add surrounding text with ``addHelpText``
 --------------------------------------------------
 
