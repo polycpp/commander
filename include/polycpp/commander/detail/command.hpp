@@ -487,13 +487,7 @@ inline Command& Command::action(ActionFn fn) {
 // ---- Parsing ----
 
 inline Command& Command::parse() {
-    // polycpp::process::argv() returns native [program, ...userArgs]; reshape
-    // it to Node-style [runtime, script, ...userArgs] so the default "node"
-    // mode strips the right number of leading entries and scriptPath_ is
-    // populated from the real program path.
-    auto args = polycpp::process::argv();
-    args.insert(args.begin(), std::string{});
-    return parse(args, {.from = "node"});
+    return parse(polycpp::process::argv(), {.from = "native"});
 }
 
 inline Command& Command::parse(const std::vector<std::string>& argv, const ParseOptions& parseOpts) {
@@ -1054,6 +1048,15 @@ inline std::vector<std::string> Command::prepareUserArgs_(const std::vector<std:
         }
         if (effectiveArgv.size() > 2) {
             userArgs.assign(effectiveArgv.begin() + 2, effectiveArgv.end());
+        }
+    } else if (parseOpts.from == "native") {
+        // C++-runtime argv shape: [program, ...userArgs]. Skip just the
+        // program name. Used by parse() with no arguments.
+        if (!effectiveArgv.empty()) {
+            scriptPath_ = effectiveArgv.front();
+        }
+        if (effectiveArgv.size() > 1) {
+            userArgs.assign(effectiveArgv.begin() + 1, effectiveArgv.end());
         }
     } else {
         throw std::runtime_error("unexpected parse option { from: '" + parseOpts.from + "' }");

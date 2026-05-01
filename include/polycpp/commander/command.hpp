@@ -30,7 +30,12 @@ namespace commander {
 /// @brief Options controlling how argv is parsed.
 /// @since 0.1.0
 struct ParseOptions {
-    /// @brief Where the args are from: "node", "user", or "electron".
+    /// @brief Where the args are from. Allowed values:
+    /// - `"node"` — `[runtime, script, ...userArgs]`; skips first 2 entries.
+    /// - `"electron"` — `[runtime, script, ...userArgs]`; skips first 2 entries.
+    /// - `"user"` — `[...userArgs]`; caller has already stripped the program/script prefix.
+    /// - `"native"` — `[program, ...userArgs]`; real C++ argv shape; skips just the program name.
+    ///   Used by the no-argument `parse()` overload that reads `polycpp::process::argv()`.
     std::string from = "node";
 };
 
@@ -603,7 +608,13 @@ public:
     Command& parse(const std::vector<std::string>& argv, const ParseOptions& parseOpts = {});
 
     /**
-     * @brief Parse argv from process::argv() with default options.
+     * @brief Parse the program's own argv.
+     *
+     * Reads `polycpp::process::argv()` (which must have been seeded with
+     * `polycpp::process::init(argc, argv)` from `main`) and parses it with
+     * `from = "native"` — the C++-runtime argv shape `[program, ...userArgs]`.
+     * The program name is recorded as `scriptPath_`.
+     *
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js#parse-and-parseasync
      * @since 0.1.0
