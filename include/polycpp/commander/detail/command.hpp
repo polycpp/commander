@@ -413,7 +413,8 @@ inline Command& Command::command(const std::string& nameAndArgs, const CommandOp
     if (!argsDef.empty()) cmd.arguments(argsDef);
 
     registerCommand_(cmd);
-    cmd.impl_->parent_ = this->impl_.get();
+    // weak_ptr to the parent's Impl: see detail/command_impl.hpp.
+    cmd.impl_->parent_ = this->impl_;
     cmd.copyInheritedSettings(*this);
 
     impl_->commands_.push_back(std::move(cmd));
@@ -431,7 +432,8 @@ inline Command& Command::addCommand(Command cmd, const CommandOptions& opts) {
     if (opts.hidden) cmd.impl_->hidden_ = true;
 
     registerCommand_(cmd);
-    cmd.impl_->parent_ = this->impl_.get();
+    // weak_ptr to the parent's Impl: see detail/command_impl.hpp.
+    cmd.impl_->parent_ = this->impl_;
 
     impl_->commands_.push_back(std::move(cmd));
     return *this;
@@ -466,7 +468,8 @@ inline Command& Command::executableCommand(const std::string& nameAndArgs,
     if (!argsDef.empty()) cmd.arguments(argsDef);
 
     registerCommand_(cmd);
-    cmd.impl_->parent_ = this->impl_.get();
+    // weak_ptr to the parent's Impl: see detail/command_impl.hpp.
+    cmd.impl_->parent_ = this->impl_;
     cmd.copyInheritedSettings(*this);
 
     impl_->commands_.push_back(std::move(cmd));
@@ -518,9 +521,11 @@ inline ParseOptionsResult Command::parseOptions(const std::vector<std::string>& 
     auto negativeNumberArg = [this](const std::string& arg) -> bool {
         std::regex negNumRe("^-(\\d+|\\d*\\.\\d+)(e[+-]?\\d+)?$");
         if (!std::regex_match(arg, negNumRe)) return false;
-        // Check no digit used as short option in command hierarchy (root included)
-        for (Command::Impl* implPtr = impl_.get(); implPtr; implPtr = implPtr->parent_) {
-            for (const auto& opt : implPtr->options_) {
+        // Walk the impl chain (root included). parent_ is a weak_ptr — lock
+        // at each step; bail out if an ancestor's Impl has already died.
+        std::shared_ptr<Command::Impl> current = impl_;
+        while (current) {
+            for (const auto& opt : current->options_) {
                 if (opt.short_.has_value()) {
                     std::regex digitShortRe("^-\\d$");
                     if (std::regex_match(*opt.short_, digitShortRe)) {
@@ -528,6 +533,7 @@ inline ParseOptionsResult Command::parseOptions(const std::vector<std::string>& 
                     }
                 }
             }
+            current = current->parent_.lock();
         }
         return true;
     };
@@ -676,10 +682,11 @@ inline OptionValues Command::opts() const {
 inline OptionValues Command::optsWithGlobals() const {
     polycpp::JsonValue result(polycpp::JsonObject{});
     // Collect impls along the chain (root-most first) so values from the
-    // closer (more specific) command win.
-    std::vector<Command::Impl*> chain;
-    for (Command::Impl* implPtr = impl_.get(); implPtr; implPtr = implPtr->parent_) {
-        chain.push_back(implPtr);
+    // closer (more specific) command win. parent_ is a weak_ptr; lock at
+    // each step and stop when an ancestor's Impl has already died.
+    std::vector<std::shared_ptr<Command::Impl>> chain;
+    for (auto current = impl_; current; current = current->parent_.lock()) {
+        chain.push_back(current);
     }
     for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
         const auto& cmdOpts = (*it)->optionValues_;
@@ -722,9 +729,10 @@ inline std::string Command::getOptionValueSource(const std::string& key) const {
 inline std::string Command::getOptionValueSourceWithGlobals(const std::string& key) const {
     std::string source;
     // Walk the impl chain so the root command's source is included.
-    for (Command::Impl* implPtr = impl_.get(); implPtr; implPtr = implPtr->parent_) {
-        auto it = implPtr->optionValueSources_.find(key);
-        if (it != implPtr->optionValueSources_.end() && !it->second.empty()) {
+    // parent_ is a weak_ptr; lock at each step.
+    for (auto current = impl_; current; current = current->parent_.lock()) {
+        auto it = current->optionValueSources_.find(key);
+        if (it != current->optionValueSources_.end() && !it->second.empty()) {
             source = it->second;
         }
     }
@@ -984,18 +992,18 @@ inline const std::vector<polycpp::JsonValue>& Command::processedArgs() const {
     return impl_->processedArgs_;
 }
 inline bool Command::hidden() const { return impl_->hidden_; }
-inline bool Command::hasParent() const { return impl_->parent_ != nullptr; }
-inline Command Command::parent() const {
-    if (!impl_->parent_) return Command();
-    // Reconstitute a handle that shares ownership of the parent's Impl.
-    // The parent Impl is reachable from this command's own Impl, which in
-    // turn is itself owned by the parent's commands_ deque -- so the
-    // parent's Impl is alive whenever this child is. We use the aliasing
-    // shared_ptr constructor to make a handle whose ref counting tracks
-    // this child's control block but whose stored pointer is the parent.
-    auto aliasPtr = std::shared_ptr<Impl>(impl_, impl_->parent_);
+inline bool Command::hasParent() const noexcept {
+    return !impl_->parent_.expired();
+}
+
+inline std::optional<Command> Command::parent() const {
+    auto parentSp = impl_->parent_.lock();
+    if (!parentSp) return std::nullopt;
+    // Build a handle that shares ownership of the parent's Impl (the
+    // shared_ptr came from `lock()`, so the Impl is guaranteed alive
+    // for the lifetime of this returned Command).
     Command result;
-    result.impl_ = std::move(aliasPtr);
+    result.impl_ = std::move(parentSp);
     result.setEmitter_(result.impl_->ee);
     return result;
 }
@@ -1035,8 +1043,9 @@ inline void Command::unknownOption(const std::string& flag) {
                 candidateFlags.push_back(*opt.long_);
             }
         }
-        Command::Impl* ancestorImpl = impl_->parent_;
-        Command::Impl* prevImpl = impl_.get();
+        // parent_ is a weak_ptr; lock at each step.
+        std::shared_ptr<Command::Impl> ancestorImpl = impl_->parent_.lock();
+        std::shared_ptr<Command::Impl> prevImpl = impl_;
         while (ancestorImpl && !prevImpl->enablePositionalOptions_) {
             for (const auto& opt : ancestorImpl->options_) {
                 if (!opt.hidden && opt.long_.has_value()) {
@@ -1044,7 +1053,7 @@ inline void Command::unknownOption(const std::string& flag) {
                 }
             }
             prevImpl = ancestorImpl;
-            ancestorImpl = ancestorImpl->parent_;
+            ancestorImpl = ancestorImpl->parent_.lock();
         }
         suggestion = suggestSimilar(flag, candidateFlags);
     }
@@ -1368,13 +1377,14 @@ inline void Command::processArguments_() {
 
 inline void Command::checkForMissingMandatoryOptions_() {
     // Walk impl chain to cover the root command (which does not appear in
-    // getCommandAndAncestors_ when reached from a descendant).
-    for (Command::Impl* implPtr = impl_.get(); implPtr; implPtr = implPtr->parent_) {
-        for (const auto& opt : implPtr->options_) {
+    // getCommandAndAncestors_ when reached from a descendant). parent_ is
+    // a weak_ptr; lock at each step.
+    for (auto current = impl_; current; current = current->parent_.lock()) {
+        for (const auto& opt : current->options_) {
             if (opt.mandatory) {
-                bool missing = !implPtr->optionValues_.isObject() ||
-                               !implPtr->optionValues_.hasKey(opt.attributeName()) ||
-                               implPtr->optionValues_.asObject().at(opt.attributeName()).isNull();
+                bool missing = !current->optionValues_.isObject() ||
+                               !current->optionValues_.hasKey(opt.attributeName()) ||
+                               current->optionValues_.asObject().at(opt.attributeName()).isNull();
                 if (missing) {
                     // Use *this for error reporting (output config inherits).
                     missingMandatoryOptionValue(opt);
@@ -1385,16 +1395,17 @@ inline void Command::checkForMissingMandatoryOptions_() {
 }
 
 inline void Command::checkForConflictingOptions_() {
-    // Walk the impl chain so that we cover the root command too.
-    for (Command::Impl* implPtr = impl_.get(); implPtr; implPtr = implPtr->parent_) {
+    // Walk the impl chain so that we cover the root command too. parent_
+    // is a weak_ptr; lock at each step.
+    for (auto current = impl_; current; current = current->parent_.lock()) {
         std::vector<const Option*> definedNonDefault;
-        for (const auto& opt : implPtr->options_) {
+        for (const auto& opt : current->options_) {
             std::string key = opt.attributeName();
-            if (!implPtr->optionValues_.isObject() || !implPtr->optionValues_.hasKey(key)) continue;
-            auto val = implPtr->optionValues_.asObject().at(key);
+            if (!current->optionValues_.isObject() || !current->optionValues_.hasKey(key)) continue;
+            auto val = current->optionValues_.asObject().at(key);
             if (val.isNull()) continue;
-            auto srcIt = implPtr->optionValueSources_.find(key);
-            if (srcIt != implPtr->optionValueSources_.end() && srcIt->second == "default") continue;
+            auto srcIt = current->optionValueSources_.find(key);
+            if (srcIt != current->optionValueSources_.end() && srcIt->second == "default") continue;
             definedNonDefault.push_back(&opt);
         }
 
@@ -1435,7 +1446,8 @@ inline void Command::checkForConflictingLocalOptions_() {
 }
 
 inline void Command::checkForBrokenPassThrough_() {
-    if (impl_->parent_ && impl_->passThroughOptions_ && !impl_->parent_->enablePositionalOptions_) {
+    auto parentSp = impl_->parent_.lock();
+    if (parentSp && impl_->passThroughOptions_ && !parentSp->enablePositionalOptions_) {
         throw std::runtime_error(
             "passThroughOptions cannot be used for '" + impl_->name_ +
             "' without turning on enablePositionalOptions for parent command(s)");
@@ -1446,7 +1458,7 @@ inline void Command::excessArguments_(const std::vector<std::string>& receivedAr
     if (impl_->allowExcessArguments_) return;
     int expected = static_cast<int>(impl_->registeredArguments_.size());
     std::string s = (expected == 1) ? "" : "s";
-    std::string forSubcommand = impl_->parent_ ? " for '" + name() + "'" : "";
+    std::string forSubcommand = !impl_->parent_.expired() ? " for '" + name() + "'" : "";
     error("error: too many arguments" + forSubcommand +
           ". Expected " + std::to_string(expected) + " argument" + s +
           " but got " + std::to_string(static_cast<int>(receivedArgs.size())) + ".",
@@ -1622,14 +1634,16 @@ inline void Command::dispatchHelpCommand_(const std::string& subcommandName) {
 }
 
 inline void Command::callHooks_(const std::string& event) {
-    // Walk impl chain so we cover the root command too.
-    struct Entry { Command::Impl* impl; HookFn fn; };
+    // Walk impl chain so we cover the root command too. parent_ is a
+    // weak_ptr; lock at each step so we keep ancestors alive for the
+    // duration of the walk and the synthesised handles below.
+    struct Entry { std::shared_ptr<Command::Impl> impl; HookFn fn; };
     std::vector<Entry> hooks;
-    for (Command::Impl* implPtr = impl_.get(); implPtr; implPtr = implPtr->parent_) {
-        auto hookIt = implPtr->lifeCycleHooks_.find(event);
-        if (hookIt != implPtr->lifeCycleHooks_.end()) {
+    for (auto current = impl_; current; current = current->parent_.lock()) {
+        auto hookIt = current->lifeCycleHooks_.find(event);
+        if (hookIt != current->lifeCycleHooks_.end()) {
             for (const auto& callback : hookIt->second) {
-                hooks.push_back({implPtr, callback});
+                hooks.push_back({current, callback});
             }
         }
     }
@@ -1639,12 +1653,10 @@ inline void Command::callHooks_(const std::string& event) {
         std::reverse(hooks.begin(), hooks.end());
     }
     for (auto& entry : hooks) {
-        // We need a Command& for the callback. Synthesise a transient handle
-        // that aliases this command's control block but points at the
-        // ancestor's Impl (same trick parent() uses).
-        auto aliasPtr = std::shared_ptr<Impl>(impl_, entry.impl);
+        // We need a Command& for the callback. Synthesise a transient
+        // handle whose impl_ shares ownership of the ancestor's Impl.
         Command hookedCommand;
-        hookedCommand.impl_ = std::move(aliasPtr);
+        hookedCommand.impl_ = entry.impl;
         hookedCommand.setEmitter_(hookedCommand.impl_->ee);
         entry.fn(hookedCommand, *this);
     }
@@ -1791,15 +1803,15 @@ inline std::vector<const Command*> Command::getCommandAndAncestors_() const {
     // outside any commands_ deque (e.g. the user's stack-allocated root);
     // we still return its self pointer when we are it. Callers that only
     // need to iterate options/values up the chain should use the impl
-    // walk directly.
+    // walk directly via `impl_->parent_.lock()`.
     std::vector<const Command*> result;
     result.push_back(this);
-    Command::Impl* parentImpl = impl_->parent_;
+    auto parentImpl = impl_->parent_.lock();
     while (parentImpl) {
         const Command* parentHandle = nullptr;
-        if (parentImpl->parent_) {
-            for (const auto& sibling : parentImpl->parent_->commands_) {
-                if (sibling.impl_.get() == parentImpl) {
+        if (auto grandparentImpl = parentImpl->parent_.lock()) {
+            for (const auto& sibling : grandparentImpl->commands_) {
+                if (sibling.impl_.get() == parentImpl.get()) {
                     parentHandle = &sibling;
                     break;
                 }
@@ -1807,7 +1819,7 @@ inline std::vector<const Command*> Command::getCommandAndAncestors_() const {
         }
         if (!parentHandle) break;
         result.push_back(parentHandle);
-        parentImpl = parentImpl->parent_;
+        parentImpl = parentImpl->parent_.lock();
     }
     return result;
 }
@@ -1988,23 +2000,26 @@ Command::dispatchSubcommandAsync_(const std::string& commandName,
 
 inline polycpp::Promise<void>
 Command::callHooksAsync_(const std::string& event) {
-    // Collect impls along the chain, root first.
-    std::vector<Command::Impl*> chainImpls;
-    for (Command::Impl* implPtr = impl_.get(); implPtr; implPtr = implPtr->parent_) {
-        chainImpls.push_back(implPtr);
+    // Collect impls along the chain, root first. parent_ is a weak_ptr;
+    // lock at each step. The locked shared_ptrs are also what we capture
+    // into the chained lambdas below to keep ancestors alive across the
+    // promise-chain's asynchronous boundaries.
+    std::vector<std::shared_ptr<Command::Impl>> chainImpls;
+    for (auto current = impl_; current; current = current->parent_.lock()) {
+        chainImpls.push_back(current);
     }
     std::reverse(chainImpls.begin(), chainImpls.end());
 
     // Collect all hooks (sync + async) from ancestors
     struct HookEntry {
-        Command::Impl* implPtr;
+        std::shared_ptr<Command::Impl> implPtr;
         bool isAsync;
         size_t syncIdx;
         size_t asyncIdx;
     };
     std::vector<HookEntry> hooks;
 
-    for (Command::Impl* implPtr : chainImpls) {
+    for (const auto& implPtr : chainImpls) {
         auto syncIt = implPtr->lifeCycleHooks_.find(event);
         if (syncIt != implPtr->lifeCycleHooks_.end()) {
             for (size_t i = 0; i < syncIt->second.size(); ++i) {
@@ -2025,27 +2040,25 @@ Command::callHooksAsync_(const std::string& event) {
 
     // Chain all hooks sequentially
     polycpp::Promise<void> chain = polycpp::Promise<void>::resolve();
-    auto selfImpl = impl_;  // keep alive
+    auto selfImpl = impl_;  // keep self alive across the chain
     Command* actionCommand = this;
 
     for (const auto& entry : hooks) {
-        Command::Impl* hookedImpl = entry.implPtr;
+        auto hookedImpl = entry.implPtr;  // keeps the ancestor alive in the lambda
 
         if (entry.isAsync) {
             auto& hookFn = hookedImpl->asyncLifeCycleHooks_[event][entry.asyncIdx];
             chain = chain.then([selfImpl, hookedImpl, actionCommand, &hookFn]() -> polycpp::Promise<void> {
-                auto aliasPtr = std::shared_ptr<Command::Impl>(selfImpl, hookedImpl);
                 Command hookedCommand;
-                hookedCommand.impl_ = std::move(aliasPtr);
+                hookedCommand.impl_ = hookedImpl;
                 hookedCommand.setEmitter_(hookedCommand.impl_->ee);
                 return hookFn(hookedCommand, *actionCommand);
             });
         } else {
             auto& hookFn = hookedImpl->lifeCycleHooks_[event][entry.syncIdx];
             chain = chain.then([selfImpl, hookedImpl, actionCommand, &hookFn]() {
-                auto aliasPtr = std::shared_ptr<Command::Impl>(selfImpl, hookedImpl);
                 Command hookedCommand;
-                hookedCommand.impl_ = std::move(aliasPtr);
+                hookedCommand.impl_ = hookedImpl;
                 hookedCommand.setEmitter_(hookedCommand.impl_->ee);
                 hookFn(hookedCommand, *actionCommand);
             });

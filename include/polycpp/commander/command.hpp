@@ -1101,22 +1101,41 @@ public:
     bool hidden() const;
 
     /**
-     * @brief Get the parent command, if any.
+     * @brief Get this command's parent if it is still alive.
      *
-     * Returns an empty `Command` handle when this command has no parent;
-     * use `hasParent()` to disambiguate.
+     * Returns `std::nullopt` when this command has no parent (e.g., it is a
+     * root) **or** when the parent's storage has been destroyed (the case
+     * where a child handle was copied out of its parent and outlives it).
      *
-     * @return The parent command handle, or an empty handle.
+     * Internally the parent link is held as a `std::weak_ptr` to the
+     * parent's `Impl`; this method `lock`s the weak reference, returning
+     * `std::nullopt` when the parent's last owning `Command` handle has
+     * already gone out of scope.
+     *
+     * @par Example
+     * @code{.cpp}
+     *   Command prog;
+     *   auto sub = prog.command("sub");
+     *   if (auto parent = sub.parent()) {
+     *       std::cout << parent->name();
+     *   }
+     * @endcode
+     *
+     * @return The parent command handle, or `std::nullopt`.
      * @since 0.2.0
      */
-    Command parent() const;
+    std::optional<Command> parent() const;
 
     /**
-     * @brief Whether this command has a parent.
-     * @return true if a parent has been set.
+     * @brief Predicate: does this command have a live parent?
+     *
+     * Equivalent to `parent().has_value()`. Provided as a cheap check
+     * that avoids materializing the parent handle.
+     *
+     * @return true when a parent is registered and its Impl is still alive.
      * @since 0.2.0
      */
-    bool hasParent() const;
+    bool hasParent() const noexcept;
 
     // --- Error reporting methods (public for test access) ---
 
