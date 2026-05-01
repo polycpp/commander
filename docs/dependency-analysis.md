@@ -8,7 +8,7 @@
 - published npm artifact analyzed: yes
 - include dev dependencies: no
 - dependency source install used: not required — commander has zero runtime dependencies, so `npm install --ignore-scripts` produced an empty `node_modules`
-- companion root checked: `<companion libs root>/`
+- companion root checked: `<companion libs root>`
 
 ## Package entry metadata
 

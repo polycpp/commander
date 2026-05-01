@@ -141,7 +141,7 @@ contract.
 
 ## Companion repo alignment
 
-Reference companions inspected at `<companion libs root>/`:
+Reference companions inspected at `<companion libs root>`:
 
 - small utility: `cookie`, `mime`, `vary` — same `include/polycpp/<name>/`
   layout, single-TU `src/<name>.cpp`, `polycpp::<name>` CMake alias,
@@ -302,8 +302,9 @@ Decisions:
 
 ## External SDK and native driver strategy
 
-- upstream external services/protocols: not applicable — commander is a
-  pure CLI argument parser with no external service or wire protocol.
+- upstream services or protocols touched: not applicable — commander is a
+  CLI argument parser. It does not talk to any remote system; it only
+  reads `argv`/`env` and writes formatted help text to stdout/stderr.
 - native SDKs/client libraries to use: not applicable.
 - SDKs/protocols explicitly not reimplemented: not applicable.
 - adapter/linking strategy: not applicable.

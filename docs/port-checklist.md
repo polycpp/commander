@@ -132,7 +132,7 @@ Legend:
 
 ## Validation
 
-- [x] targeted tests pass (`ctest --output-on-failure` from build/)
+- [x] targeted tests pass
 - [x] README examples match actual code
 - [x] remaining gaps are documented
 - [x] `docs/test-plan.md` current validation records exact commands run
@@ -141,8 +141,8 @@ Legend:
 
 - [ ] production-grade quality confirmed
 - [ ] public documentation ready
-- [ ] generated docs placeholder pages replaced with real public documentation
+- [x] generated docs placeholder pages replaced with real public documentation
 - [ ] public docs do not contain local absolute paths
 - [ ] `python3 docs/build.py` passes
-- [x] third-party license notices complete (`THIRD_PARTY_LICENSES.md`)
+- [x] third-party license notices complete
 - [ ] GitHub repo visibility changed to public
