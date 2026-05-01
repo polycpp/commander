@@ -11,8 +11,8 @@
 namespace polycpp {
 namespace commander {
 
-inline std::unique_ptr<Command> createCommand(const std::string& name) {
-    return std::make_unique<Command>(name);
+inline Command createCommand(const std::string& name) {
+    return Command(name);
 }
 
 inline Option createOption(const std::string& flags, const std::string& description) {

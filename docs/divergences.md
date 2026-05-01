@@ -17,12 +17,6 @@
 
 ## Deliberate Behavior Changes
 
-- **`Command` is non-copyable, owned by `unique_ptr`.** `polycpp::events::EventEmitter`
-  is non-copyable, so `Command` is non-copyable too. Subcommands are stored
-  as `std::vector<std::unique_ptr<Command>>`; `addCommand`,
-  `addHelpCommand`, and `createCommand` all use `unique_ptr`. In JS the
-  same shape is reference semantics over a JS object — the user-visible
-  API still chains identically: `prog.command("serve").action(...)`.
 - **Sync vs. async action and hook overloads are separate methods.**
   Upstream collapses sync and async into a single `action(fn)` /
   `hook(event, fn)` and dispatches by the runtime type of the returned
@@ -41,10 +35,6 @@
   executable form is its own named method.
 - **`Error.captureStackTrace` is not preserved.** It is a Node-only
   observability hook with no C++ equivalent.
-- **`createCommand` returns `std::unique_ptr<Command>`.** Same reason as
-  the non-copyable note above. JS callers get a fresh `Command` object;
-  C++ callers get owning storage they can move into `addCommand` or use
-  directly via `*ptr`.
 
 ## Unsupported Runtime-Specific Features
 
@@ -95,5 +85,16 @@ guidance documents (`companion-patterns.md`,
 
 | Severity | File | Description | Classification |
 |---|---|---|---|
-| low | `include/polycpp/commander/command.hpp:1010-1036` | `Command` has many public mutable fields (`commands`, `options`, `parent`, `registeredArguments`, `args`, `rawArgs`, `processedArgs`). Mirrors upstream's JS object property shape. Direct mutation could leave a `Command` in an inconsistent state. | behavior change (accepted for upstream parity) |
 | low | `include/polycpp/commander/help.hpp` | `Help` exposes configuration as public mutable fields (`helpWidth`, `sortOptions`, etc.) rather than via a config struct. Mirrors upstream. | behavior change (accepted for upstream parity) |
+
+## Resolved (post-catch-up)
+
+Divergences resolved after the libgen catch-up landed. Recorded here for
+provenance — these were originally listed under "Deliberate Behavior
+Changes" or "Audit findings ▸ Remaining" and have since been closed.
+
+| Original divergence | Resolution |
+|---|---|
+| **`Command` was non-copyable, owned by `unique_ptr`.** Subcommands were stored as `std::vector<std::unique_ptr<Command>>` because `polycpp::events::EventEmitter` was non-copyable. The user-visible API still chained but app-owned roots required `prog->...` arrow syntax. | Refactored `Command` to the polycpp Handle/Impl pattern (the same shape as `worker_threads::Worker` and `MessagePort`): the public `Command` is a thin handle holding `std::shared_ptr<Command::Impl>`, inheriting from `polycpp::events::EventEmitterForwarder`. Subcommands are now stored as `std::vector<Command>` (handles, not `unique_ptr`). The handle is copyable and movable, and copies share state with the original. |
+| **`createCommand` returned `std::unique_ptr<Command>`.** Forced `prog->parse()` on app-owned root commands. | Returns `Command` by value. `prog.parse()` now chains directly. `addCommand` and `addHelpCommand` now take `Command` by value (sink). |
+| **`Command` exposed many public mutable fields (`commands`, `options`, `parent`, `registeredArguments`, `args`, `rawArgs`, `processedArgs`).** Direct mutation could leave a command in an inconsistent state. | Replaced with const-getter member functions of the same name (`commands()`, `options()`, …). Internal state lives on `Command::Impl` and is mutated only through Command's setter API. Tests and Help internals were updated accordingly. |

@@ -13,8 +13,10 @@
 #include <polycpp/commander/option.hpp>
 
 #include <polycpp/events/detail/aggregator.hpp>
+#include <polycpp/events/event_emitter_forwarder.hpp>
 #include <polycpp/core/promise.hpp>
 
+#include <deque>
 #include <functional>
 #include <map>
 #include <memory>
@@ -116,8 +118,15 @@ using AsyncHookFn = std::function<polycpp::Promise<void>(Command& thisCommand, C
 /**
  * @brief The main Command class — CLI command with options, arguments, and subcommands.
  *
- * Extends polycpp::EventEmitter. Mirrors npm commander's Command class.
- * Commands own their subcommands via unique_ptr (non-copyable due to EventEmitter).
+ * `Command` is a lightweight handle that owns a `std::shared_ptr` to its
+ * implementation; copies of the handle share the same underlying state.
+ * That mirrors commander.js's reference-semantics over a JS object and
+ * means subcommands are stored by value as `Command` handles (not
+ * `std::unique_ptr<Command>`).
+ *
+ * Inherits from `polycpp::events::EventEmitterForwarder`, which forwards
+ * typed event operations (`on`, `once`, `emit`, `off`, …) to the
+ * `polycpp::events::EventEmitter` that the Impl owns.
  *
  * @par Example
  * @code{.cpp}
@@ -141,7 +150,7 @@ using AsyncHookFn = std::function<polycpp::Promise<void>(Command& thisCommand, C
  * @see https://github.com/tj/commander.js
  * @since 0.1.0
  */
-class Command : public polycpp::events::EventEmitter {
+class Command : public polycpp::events::EventEmitterForwarder {
 public:
     // --- Constructors ---
 
@@ -158,11 +167,22 @@ public:
      */
     explicit Command(const std::string& name = "");
 
-    /// @brief Virtual destructor.
+    /// @brief Destructor.
     /// @since 0.1.0
-    virtual ~Command() = default;
+    ~Command();
 
-    // Non-copyable (inherited from EventEmitter), movable.
+    /// @brief Copyable — handles share state via `std::shared_ptr<Impl>`.
+    /// @since 0.2.0
+    Command(const Command&) = default;
+    /// @brief Movable — handles share state via `std::shared_ptr<Impl>`.
+    /// @since 0.2.0
+    Command(Command&&) noexcept = default;
+    /// @brief Copy assignment — both handles end up referring to the same Impl.
+    /// @since 0.2.0
+    Command& operator=(const Command&) = default;
+    /// @brief Move assignment — both handles end up referring to the same Impl.
+    /// @since 0.2.0
+    Command& operator=(Command&&) noexcept = default;
 
     // --- Metadata getters/setters (dual getter/setter pattern) ---
 
@@ -467,7 +487,9 @@ public:
      * @brief Define a subcommand.
      *
      * Parses "name <required> [optional]" to extract name and arguments.
-     * Returns a reference to the NEW subcommand (not *this).
+     * Returns a reference to the NEW subcommand (not *this). The reference
+     * is stable: subcommands live in a `std::deque<Command>` whose
+     * iterators and references survive future `push_back`s.
      *
      * @param nameAndArgs Command name and argument definitions.
      * @param opts Command options (isDefault, hidden).
@@ -528,24 +550,30 @@ public:
      * @brief Add a prepared subcommand.
      *
      * Unlike command(), this does NOT return the new subcommand —
-     * it returns *this for chaining.
+     * it returns *this for chaining. The subcommand handle sinks in by
+     * value; the caller's handle keeps sharing the same Impl, so further
+     * calls on it are visible here too.
      *
-     * @param cmd The subcommand to add (moved via unique_ptr).
+     * @param cmd The subcommand handle to add (sinks by value).
      * @param opts Command options.
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js
      * @since 0.1.0
      */
-    Command& addCommand(std::unique_ptr<Command> cmd, const CommandOptions& opts = {});
+    Command& addCommand(Command cmd, const CommandOptions& opts = {});
 
     /**
      * @brief Factory routine to create a new unattached Command.
+     *
+     * Returns a `Command` handle by value. Copies of the returned handle
+     * share the same underlying state via `std::shared_ptr`.
+     *
      * @param name Command name.
-     * @return New Command as unique_ptr.
+     * @return New Command handle.
      * @see https://github.com/tj/commander.js
      * @since 0.1.0
      */
-    virtual std::unique_ptr<Command> createCommand(const std::string& name = "") const;
+    virtual Command createCommand(const std::string& name = "") const;
 
     // --- Action ---
 
@@ -797,12 +825,12 @@ public:
      *
      * The command will be used as the help subcommand, replacing the default.
      *
-     * @param cmd The custom help command (moved via unique_ptr).
+     * @param cmd The custom help command handle (sinks by value).
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js#custom-help
      * @since 0.1.0
      */
-    Command& addHelpCommand(std::unique_ptr<Command> cmd);
+    Command& addHelpCommand(Command cmd);
 
     /**
      * @brief Output help information for this command.
@@ -1016,35 +1044,79 @@ public:
      */
     virtual Help createHelp() const;
 
-    // --- Public fields (matching JS) ---
+    // --- Object-property accessors (mirroring upstream commander's JS shape) ---
 
-    /// @brief Subcommands (owned).
-    /// @since 0.1.0
-    std::vector<std::unique_ptr<Command>> commands;
+    /**
+     * @brief Get the subcommand list (read-only).
+     *
+     * Subcommands are stored as `Command` handles in a `std::deque` so
+     * references returned by `command()` remain valid as further
+     * subcommands are added.
+     *
+     * @return Const reference to the subcommand deque.
+     * @since 0.2.0
+     */
+    const std::deque<Command>& commands() const;
 
-    /// @brief Registered options.
-    /// @since 0.1.0
-    std::vector<Option> options;
+    /**
+     * @brief Get the registered options (read-only).
+     * @return Const reference to the option vector.
+     * @since 0.2.0
+     */
+    const std::vector<Option>& options() const;
 
-    /// @brief Parent command (non-owning).
-    /// @since 0.1.0
-    Command* parent = nullptr;
+    /**
+     * @brief Get the registered arguments (read-only).
+     * @return Const reference to the argument vector.
+     * @since 0.2.0
+     */
+    const std::vector<Argument>& registeredArguments() const;
 
-    /// @brief Registered arguments.
-    /// @since 0.1.0
-    std::vector<Argument> registeredArguments;
+    /**
+     * @brief Get CLI args with options removed (raw strings after parse).
+     * @return Const reference to the args vector.
+     * @since 0.2.0
+     */
+    const std::vector<std::string>& args() const;
 
-    /// @brief CLI args with options removed (raw strings after parse).
-    /// @since 0.1.0
-    std::vector<std::string> args;
+    /**
+     * @brief Get raw args as passed to parse().
+     * @return Const reference to the raw args vector.
+     * @since 0.2.0
+     */
+    const std::vector<std::string>& rawArgs() const;
 
-    /// @brief Raw args as passed to parse().
-    /// @since 0.1.0
-    std::vector<std::string> rawArgs;
+    /**
+     * @brief Get processed args (after custom processing, collecting variadics).
+     * @return Const reference to the processed-args vector.
+     * @since 0.2.0
+     */
+    const std::vector<polycpp::JsonValue>& processedArgs() const;
 
-    /// @brief Processed args (after custom processing, collecting variadics).
-    /// @since 0.1.0
-    std::vector<polycpp::JsonValue> processedArgs;
+    /**
+     * @brief Whether this command is hidden from help.
+     * @return true if hidden.
+     * @since 0.2.0
+     */
+    bool hidden() const;
+
+    /**
+     * @brief Get the parent command, if any.
+     *
+     * Returns an empty `Command` handle when this command has no parent;
+     * use `hasParent()` to disambiguate.
+     *
+     * @return The parent command handle, or an empty handle.
+     * @since 0.2.0
+     */
+    Command parent() const;
+
+    /**
+     * @brief Whether this command has a parent.
+     * @return true if a parent has been set.
+     * @since 0.2.0
+     */
+    bool hasParent() const;
 
     // --- Error reporting methods (public for test access) ---
 
@@ -1083,7 +1155,12 @@ public:
     void unknownCommand();
 
 private:
-    // --- Private helper methods ---
+    // --- Pimpl handle ---
+
+    struct Impl;
+    std::shared_ptr<Impl> impl_;
+
+    // --- Private helper methods (operate on `impl_`) ---
 
     void exit_(int exitCode, const std::string& code, const std::string& message);
     std::vector<std::string> prepareUserArgs_(const std::vector<std::string>& argv,
@@ -1139,67 +1216,7 @@ private:
                             std::optional<std::string> value = std::nullopt);
     std::string renderHelpText_(const std::string& position) const;
 
-    // --- Private fields ---
-
-    std::string name_;
-    std::string description_;
-    std::string summary_;
-    std::string usage_;
-    std::string version_;
-    std::string versionOptionName_;
-    std::vector<std::string> aliases_;
-    std::string scriptPath_;
-
-    bool executableHandler_ = false;
-    std::optional<std::string> executableFile_;
-    std::optional<std::string> executableDir_;
-
-    bool allowUnknownOption_ = false;
-    bool allowExcessArguments_ = false;
-    bool enablePositionalOptions_ = false;
-    bool passThroughOptions_ = false;
-    bool combineFlagAndOptionalValue_ = true;
-    bool hidden_ = false;
-    bool showSuggestionAfterError_ = true;
-
-    /// @brief false = no help after error, true = show help, string = custom message.
-    std::variant<bool, std::string> showHelpAfterError_ = false;
-
-    OptionValues optionValues_;
-    OptionValueSources optionValueSources_;
-
-    /// Internal action handler takes just processedArgs; action() wraps the user's ActionFn.
-    std::function<void(const std::vector<polycpp::JsonValue>&)> actionHandler_;
-    /// Internal async action handler; set by actionAsync().
-    std::function<polycpp::Promise<void>(const std::vector<polycpp::JsonValue>&)> asyncActionHandler_;
-    std::function<void(const CommanderError&)> exitCallback_;
-
-    std::unordered_map<std::string, std::vector<HookFn>> lifeCycleHooks_;
-    std::unordered_map<std::string, std::vector<AsyncHookFn>> asyncLifeCycleHooks_;
-    std::unordered_map<std::string, std::vector<std::function<void(const std::optional<std::string>&)>>> internalEventHandlers_;
-    std::unordered_map<std::string, std::vector<std::string>> helpText_;
-
-    OutputConfiguration outputConfiguration_;
-
-    /// @brief nullptr = help disabled; nullopt = lazy create; has_value = configured.
-    std::optional<std::unique_ptr<Option>> helpOption_;
-
-    /// @brief nullptr = no help cmd; nullopt = lazy create; has_value = configured.
-    std::optional<std::unique_ptr<Command>> helpCommand_;
-    std::optional<bool> addImplicitHelpCommand_;
-
-    std::string defaultCommandName_;
-
-    std::map<std::string, polycpp::JsonValue> helpConfiguration_;
-
-    struct SavedState {
-        std::string name;
-        OptionValues optionValues;
-        OptionValueSources optionValueSources;
-    };
-    std::optional<SavedState> savedState_;
-
-    // Give Help full access to read Command internals.
+    // Help reads `impl_` directly via this friendship.
     friend class Help;
 };
 

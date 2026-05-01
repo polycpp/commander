@@ -58,12 +58,13 @@ int main(int argc, char** argv) {
 ```
 
 For app-owned root commands (rather than the global singleton), use
-`createCommand`, which returns `std::unique_ptr<Command>` because
-`Command` is non-copyable:
+`createCommand`, which returns a `Command` handle by value. The handle
+is a thin `std::shared_ptr` wrapper around the command's state, so
+copies and moves share the same underlying command:
 
 ```cpp
 auto prog = polycpp::commander::createCommand("myapp");
-prog->version("1.0.0").parse();
+prog.version("1.0.0").parse();
 ```
 
 ## Documentation

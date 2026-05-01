@@ -19,9 +19,9 @@ static void parseUser(Command& cmd, std::initializer_list<std::string> args) {
 TEST(CommandTest, DefaultConstructor) {
     Command cmd;
     EXPECT_EQ(cmd.name(), "");
-    EXPECT_TRUE(cmd.options.empty());
-    EXPECT_TRUE(cmd.registeredArguments.empty());
-    EXPECT_TRUE(cmd.commands.empty());
+    EXPECT_TRUE(cmd.options().empty());
+    EXPECT_TRUE(cmd.registeredArguments().empty());
+    EXPECT_TRUE(cmd.commands().empty());
 }
 
 TEST(CommandTest, NamedConstructor) {
@@ -831,10 +831,10 @@ TEST(CommandTest, AddHelpCommandWithCustomObject) {
     Command cmd;
     cmd.exitOverride();
     cmd.name("myapp");
-    auto customHelp = std::make_unique<Command>("aide");
-    customHelp->description("custom help command");
-    customHelp->helpOption(false);
-    customHelp->arguments("[cmd]");
+    Command customHelp("aide");
+    customHelp.description("custom help command");
+    customHelp.helpOption(false);
+    customHelp.arguments("[cmd]");
     cmd.addHelpCommand(std::move(customHelp));
     auto helpText = cmd.helpInformation();
     EXPECT_NE(helpText.find("aide"), std::string::npos);
@@ -875,7 +875,7 @@ TEST(CommandTest, ExecutableSubcommandDefined) {
     Command cmd("myapp");
     cmd.exitOverride();
     cmd.executableCommand("install", "install packages");
-    EXPECT_EQ(cmd.commands.size(), 1u);
+    EXPECT_EQ(cmd.commands().size(), 1u);
 }
 
 TEST(CommandTest, ExecutableSubcommandReturnsThis) {
@@ -1009,9 +1009,9 @@ TEST(CommandTest, ExecutableSubcommandWithArguments) {
     Command cmd("myapp");
     cmd.exitOverride();
     cmd.executableCommand("install <pkg>", "install a package");
-    EXPECT_EQ(cmd.commands.size(), 1u);
-    EXPECT_EQ(cmd.commands[0]->name(), "install");
-    EXPECT_EQ(cmd.commands[0]->registeredArguments.size(), 1u);
+    EXPECT_EQ(cmd.commands().size(), 1u);
+    EXPECT_EQ(cmd.commands()[0].name(), "install");
+    EXPECT_EQ(cmd.commands()[0].registeredArguments().size(), 1u);
 }
 
 // ---- parseAsync tests ----
