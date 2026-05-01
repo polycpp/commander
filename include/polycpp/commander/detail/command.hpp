@@ -1185,14 +1185,42 @@ inline void Command::parseCommand_(const std::vector<std::string>& initialOperan
         callHooks_("preAction");
         impl_->actionHandler_(impl_->processedArgs_);
         callHooks_("postAction");
+        // Legacy `command:<name>` event fires on the parent after action runs.
+        if (impl_->parent_) {
+            impl_->parent_->commandEventHandlers_[name()];  // ensure key exists
+            // Snapshot listeners; same reentrancy reason as emitCommandEvent_.
+            auto listeners = impl_->parent_->commandEventHandlers_[name()];
+            for (const auto& cb : listeners) {
+                cb(operands, unknownArgs);
+            }
+        }
         return;
     }
 
-    // Check for parent event listener (legacy)
+    // Legacy: parent has a `command:<name>` listener but this command has no
+    // action. Treat the listener as the action substitute and emit.
+    if (impl_->parent_) {
+        auto it = impl_->parent_->commandEventHandlers_.find(name());
+        if (it != impl_->parent_->commandEventHandlers_.end() && !it->second.empty()) {
+            checkForUnknownOptions();
+            processArguments_();
+            auto listeners = it->second;
+            for (const auto& cb : listeners) {
+                cb(operands, unknownArgs);
+            }
+            return;
+        }
+    }
+
     if (!operands.empty()) {
         if (findCommand_("*")) {
             std::vector<std::string> subOperands(operands.begin(), operands.end());
             dispatchSubcommand_("*", subOperands, unknownArgs);
+            return;
+        }
+        // Legacy `command:*` catch-all listener takes priority over
+        // unknownCommand(), matching upstream commander.js dispatch.
+        if (emitCommandEvent_("*", operands, unknownArgs)) {
             return;
         }
         if (!impl_->commands_.empty()) {
@@ -1248,6 +1276,32 @@ inline void Command::emitInternalEvent_(const std::string& eventName, std::optio
     for (const auto& listener : it->second) {
         listener(value);
     }
+}
+
+inline Command& Command::onCommand(const std::string& subcommandName, CommandEventFn listener) {
+    impl_->commandEventHandlers_[subcommandName].push_back(std::move(listener));
+    return *this;
+}
+
+inline Command& Command::onAnyCommand(CommandEventFn listener) {
+    impl_->commandEventHandlers_["*"].push_back(std::move(listener));
+    return *this;
+}
+
+inline bool Command::emitCommandEvent_(const std::string& key,
+                                       const std::vector<std::string>& operands,
+                                       const std::vector<std::string>& unknown) {
+    auto it = impl_->commandEventHandlers_.find(key);
+    if (it == impl_->commandEventHandlers_.end() || it->second.empty()) {
+        return false;
+    }
+    // Snapshot listeners so a listener that registers further listeners
+    // doesn't see itself fire twice in the same emit.
+    auto listeners = it->second;
+    for (const auto& cb : listeners) {
+        cb(operands, unknown);
+    }
+    return true;
 }
 
 inline std::string Command::renderHelpText_(const std::string& position) const {
@@ -1926,7 +1980,12 @@ Command::parseCommandAsync_(const std::vector<std::string>& initialOperands,
         checkForUnknownOptions();
         processArguments_();
 
-        // Chain: preAction hooks → action → postAction hooks
+        // Capture operands/unknown so the legacy `command:<name>` emit on
+        // the parent can run after postAction (matching upstream).
+        const std::vector<std::string> capturedOperands(operands.begin(), operands.end());
+        const std::vector<std::string> capturedUnknown(unknownArgs.begin(), unknownArgs.end());
+
+        // Chain: preAction hooks → action → postAction hooks → legacy event
         return callHooksAsync_("preAction")
             .then([this]() -> polycpp::Promise<void> {
                 if (impl_->asyncActionHandler_) {
@@ -1939,7 +1998,34 @@ Command::parseCommandAsync_(const std::vector<std::string>& initialOperands,
             })
             .then([this]() -> polycpp::Promise<void> {
                 return callHooksAsync_("postAction");
+            })
+            .then([this, capturedOperands, capturedUnknown]() -> polycpp::Promise<void> {
+                if (impl_->parent_) {
+                    auto it = impl_->parent_->commandEventHandlers_.find(name());
+                    if (it != impl_->parent_->commandEventHandlers_.end()) {
+                        auto listeners = it->second;
+                        for (const auto& cb : listeners) {
+                            cb(capturedOperands, capturedUnknown);
+                        }
+                    }
+                }
+                return polycpp::Promise<void>::resolve();
             });
+    }
+
+    // Legacy: parent has a `command:<name>` listener but this command has no
+    // action. Treat the listener as the action substitute and emit.
+    if (impl_->parent_) {
+        auto it = impl_->parent_->commandEventHandlers_.find(name());
+        if (it != impl_->parent_->commandEventHandlers_.end() && !it->second.empty()) {
+            checkForUnknownOptions();
+            processArguments_();
+            auto listeners = it->second;
+            for (const auto& cb : listeners) {
+                cb(operands, unknownArgs);
+            }
+            return polycpp::Promise<void>::resolve();
+        }
     }
 
     // No action handler
@@ -1947,6 +2033,11 @@ Command::parseCommandAsync_(const std::vector<std::string>& initialOperands,
         if (findCommand_("*")) {
             std::vector<std::string> subOperands(operands.begin(), operands.end());
             return dispatchSubcommandAsync_("*", subOperands, unknownArgs);
+        }
+        // Legacy `command:*` catch-all listener takes priority over
+        // unknownCommand(), matching upstream commander.js dispatch.
+        if (emitCommandEvent_("*", operands, unknownArgs)) {
+            return polycpp::Promise<void>::resolve();
         }
         if (!impl_->commands_.empty()) {
             unknownCommand();

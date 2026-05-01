@@ -45,12 +45,19 @@
   for subclass customization.
 - **Node-specific globals** (`global`, `globalThis`, `require.main`) are
   not exposed.
-- **JS-style dynamic `command:*` event listeners** are partially adapted:
-  the named lifecycle events (`preSubcommand`, `preAction`, `postAction`)
-  and `option:<flag>` / `optionEnv:<flag>` events are emitted through
-  `polycpp::events::EventEmitter`. Wildcard `command:*` listening (which in
-  JS relies on EventEmitter wildcard plugins) is not preserved; users
-  should attach a `Command::hook("preSubcommand", ...)` instead.
+- **Legacy `command:<name>` and `command:*` event listeners** use a
+  commander-local API rather than upstream's `prog.on("command:foo", cb)`
+  shape because `polycpp::events::EventEmitter` only accepts compile-time
+  `TypedEvent<Name, Args...>` names, not runtime strings. The C++ port
+  exposes `Command::onCommand(name, listener)` and
+  `Command::onAnyCommand(listener)` with the same dispatch semantics as
+  upstream: `command:<name>` fires on the parent after the named
+  subcommand's action runs (or in place of an action when the parent has
+  a listener for it but the subcommand has no `.action()`); `command:*`
+  fires when argv contains operands but no declared subcommand matches,
+  and suppresses the `unknownCommand()` error path while a listener is
+  installed. Both sync and async dispatch (`parse`/`parseAsync`) emit on
+  the same paths.
 
 ## Audit findings (libgen catch-up)
 
