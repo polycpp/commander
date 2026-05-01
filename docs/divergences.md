@@ -83,9 +83,9 @@ guidance documents (`companion-patterns.md`,
 
 ### Remaining (intentional, parity-driven)
 
-| Severity | File | Description | Classification |
-|---|---|---|---|
-| low | `include/polycpp/commander/help.hpp` | `Help` exposes configuration as public mutable fields (`helpWidth`, `sortOptions`, etc.) rather than via a config struct. Mirrors upstream. | behavior change (accepted for upstream parity) |
+- none — both rows that previously sat here (Command's public mutable
+  fields and Help's public mutable fields) were resolved post-catch-up.
+  See the next section.
 
 ## Resolved (post-catch-up)
 
@@ -93,8 +93,9 @@ Divergences resolved after the libgen catch-up landed. Recorded here for
 provenance — these were originally listed under "Deliberate Behavior
 Changes" or "Audit findings ▸ Remaining" and have since been closed.
 
-| Original divergence | Resolution |
-|---|---|
-| **`Command` was non-copyable, owned by `unique_ptr`.** Subcommands were stored as `std::vector<std::unique_ptr<Command>>` because `polycpp::events::EventEmitter` was non-copyable. The user-visible API still chained but app-owned roots required `prog->...` arrow syntax. | Refactored `Command` to the polycpp Handle/Impl pattern (the same shape as `worker_threads::Worker` and `MessagePort`): the public `Command` is a thin handle holding `std::shared_ptr<Command::Impl>`, inheriting from `polycpp::events::EventEmitterForwarder`. Subcommands are now stored as `std::vector<Command>` (handles, not `unique_ptr`). The handle is copyable and movable, and copies share state with the original. |
-| **`createCommand` returned `std::unique_ptr<Command>`.** Forced `prog->parse()` on app-owned root commands. | Returns `Command` by value. `prog.parse()` now chains directly. `addCommand` and `addHelpCommand` now take `Command` by value (sink). |
-| **`Command` exposed many public mutable fields (`commands`, `options`, `parent`, `registeredArguments`, `args`, `rawArgs`, `processedArgs`).** Direct mutation could leave a command in an inconsistent state. | Replaced with const-getter member functions of the same name (`commands()`, `options()`, …). Internal state lives on `Command::Impl` and is mutated only through Command's setter API. Tests and Help internals were updated accordingly. |
+| Severity | File | Description | Resolution |
+|---|---|---|---|
+| medium | `include/polycpp/commander/command.hpp` | **`Command` was non-copyable, owned by `unique_ptr`.** Subcommands were stored as `std::vector<std::unique_ptr<Command>>` because `polycpp::events::EventEmitter` was non-copyable. The user-visible API still chained but app-owned roots required `prog->...` arrow syntax. | Refactored `Command` to the polycpp Handle/Impl pattern (the same shape as `worker_threads::Worker` and `MessagePort`): the public `Command` is a thin handle holding `std::shared_ptr<Command::Impl>`, inheriting from `polycpp::events::EventEmitterForwarder`. Subcommands are now stored as `std::deque<Command>` (handles, not `unique_ptr`). The handle is copyable and movable; copies share state with the original. |
+| medium | `include/polycpp/commander/commander.hpp` | **`createCommand` returned `std::unique_ptr<Command>`.** Forced `prog->parse()` on app-owned root commands. | Returns `Command` by value. `prog.parse()` now chains directly. `addCommand` and `addHelpCommand` now take `Command` by value (sink). |
+| low | `include/polycpp/commander/command.hpp` | **`Command` exposed many public mutable fields (`commands`, `options`, `parent`, `registeredArguments`, `args`, `rawArgs`, `processedArgs`).** Direct mutation could leave a command in an inconsistent state. | Replaced with const-getter member functions of the same name (`commands()`, `options()`, …). Internal state lives on `Command::Impl` and is mutated only through Command's setter API. Tests and Help internals were updated accordingly. |
+| low | `include/polycpp/commander/help.hpp` | **`Help` exposed configuration as public mutable fields (`helpWidth`, `sortOptions`, `sortSubcommands`, `showGlobalOptions`, `outputHasColors`, `minWidthToWrap`).** Direct field assignment let callers leave a `Help` instance in inconsistent or surprising states and bypassed any future validation. Upstream JS uses the same field-property shape, but the C++ port can offer a stricter surface without losing parity. | The six fields are now private. Public access is via const getters (`helpWidth()`, `sortOptions()`, ...) and fluent setters (`helpWidth(int)`, `sortOptions(bool)`, ...) that match the dual getter/setter style already used on `Command::name()` etc. A new `Help::HelpConfiguration` struct + `Help::configure(HelpConfiguration)` provides the batch-setter ergonomics commander.js's `configureHelp({...})` is built around. `Command::configureHelp(map)` is unchanged at the surface; its internals route through the fluent setters. **Source-incompatible** for any user who wrote `help.helpWidth = 80` directly — switch to `help.helpWidth(80)`. No deprecated public-field aliases were added; this is a clean break. |

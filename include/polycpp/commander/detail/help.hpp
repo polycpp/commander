@@ -32,17 +32,27 @@ inline std::string stripColor(const std::string& str) {
     return std::regex_replace(str, sgrPattern, "");
 }
 
+inline Help& Help::configure(const HelpConfiguration& cfg) {
+    if (cfg.helpWidth) helpWidth_ = *cfg.helpWidth;
+    if (cfg.minWidthToWrap) minWidthToWrap_ = *cfg.minWidthToWrap;
+    if (cfg.sortSubcommands) sortSubcommands_ = *cfg.sortSubcommands;
+    if (cfg.sortOptions) sortOptions_ = *cfg.sortOptions;
+    if (cfg.showGlobalOptions) showGlobalOptions_ = *cfg.showGlobalOptions;
+    if (cfg.outputHasColors) outputHasColors_ = *cfg.outputHasColors;
+    return *this;
+}
+
 inline void Help::prepareContext(int contextHelpWidth) {
-    if (helpWidth == 0) {
-        helpWidth = contextHelpWidth > 0 ? contextHelpWidth : 80;
+    if (helpWidth_ == 0) {
+        helpWidth_ = contextHelpWidth > 0 ? contextHelpWidth : 80;
     }
 }
 
 inline void Help::prepareContext(const PrepareContextOptions& options) {
-    if (helpWidth == 0) {
-        helpWidth = options.helpWidth > 0 ? options.helpWidth : 80;
+    if (helpWidth_ == 0) {
+        helpWidth_ = options.helpWidth > 0 ? options.helpWidth : 80;
     }
-    outputHasColors = options.outputHasColors;
+    outputHasColors_ = options.outputHasColors;
 }
 
 inline std::vector<const Command*> Help::visibleCommands(const Command& cmd) const {
@@ -59,7 +69,7 @@ inline std::vector<const Command*> Help::visibleCommands(const Command& cmd) con
         result.push_back(helpCmd);
     }
 
-    if (sortSubcommands) {
+    if (sortSubcommands_) {
         std::sort(result.begin(), result.end(), [](const Command* a, const Command* b) {
             return a->impl_->name_ < b->impl_->name_;
         });
@@ -93,7 +103,7 @@ inline std::vector<Option> Help::visibleOptions(const Command& cmd) const {
         }
     }
 
-    if (sortOptions) {
+    if (sortOptions_) {
         std::sort(result.begin(), result.end(), [](const Option& a, const Option& b) {
             auto getSortKey = [](const Option& opt) -> std::string {
                 if (opt.short_.has_value()) {
@@ -115,7 +125,7 @@ inline std::vector<Option> Help::visibleOptions(const Command& cmd) const {
 }
 
 inline std::vector<Option> Help::visibleGlobalOptions(const Command& cmd) const {
-    if (!showGlobalOptions) return {};
+    if (!showGlobalOptions_) return {};
 
     std::vector<Option> result;
     for (auto* ancestor = cmd.impl_->parent_; ancestor != nullptr; ancestor = ancestor->parent_) {
@@ -126,7 +136,7 @@ inline std::vector<Option> Help::visibleGlobalOptions(const Command& cmd) const 
         }
     }
 
-    if (sortOptions) {
+    if (sortOptions_) {
         std::sort(result.begin(), result.end(), [](const Option& a, const Option& b) {
             auto getSortKey = [](const Option& opt) -> std::string {
                 if (opt.short_.has_value()) {
@@ -396,7 +406,7 @@ inline bool Help::preformatted(const std::string& str) const {
 }
 
 inline std::string Help::boxWrap(const std::string& str, int width) const {
-    if (width < minWidthToWrap) return str;
+    if (width < minWidthToWrap_) return str;
 
     // Split by line breaks
     std::vector<std::string> rawLines;
@@ -490,11 +500,11 @@ inline std::string Help::formatItem(const std::string& term, int termWidth,
 
     // Format the description
     const int spacerWidth = 2;
-    int hw = helpWidth > 0 ? helpWidth : 80;
+    int hw = helpWidth_ > 0 ? helpWidth_ : 80;
     int remainingWidth = hw - termWidth - spacerWidth - itemIndent;
 
     std::string formattedDescription;
-    if (remainingWidth < minWidthToWrap || preformatted(description)) {
+    if (remainingWidth < minWidthToWrap_ || preformatted(description)) {
         formattedDescription = description;
     } else {
         std::string wrappedDescription = boxWrap(description, remainingWidth);
@@ -525,11 +535,11 @@ inline std::string Help::formatItem(const std::string& term, int termWidth,
 // --- Style methods ---
 
 inline std::string Help::styleTitle(const std::string& str) const {
-    return (outputHasColors && !str.empty()) ? polycpp::util::styleText("bold", str) : str;
+    return (outputHasColors_ && !str.empty()) ? polycpp::util::styleText("bold", str) : str;
 }
 
 inline std::string Help::styleUsage(const std::string& str) const {
-    return (outputHasColors && !str.empty()) ? polycpp::util::styleText("bold", str) : str;
+    return (outputHasColors_ && !str.empty()) ? polycpp::util::styleText("bold", str) : str;
 }
 
 inline std::string Help::styleCommandDescription(const std::string& str) const {
@@ -537,7 +547,7 @@ inline std::string Help::styleCommandDescription(const std::string& str) const {
 }
 
 inline std::string Help::styleOptionTerm(const std::string& str) const {
-    return (outputHasColors && !str.empty()) ? polycpp::util::styleText("yellow", str) : str;
+    return (outputHasColors_ && !str.empty()) ? polycpp::util::styleText("yellow", str) : str;
 }
 
 inline std::string Help::styleOptionDescription(const std::string& str) const {
@@ -545,7 +555,7 @@ inline std::string Help::styleOptionDescription(const std::string& str) const {
 }
 
 inline std::string Help::styleSubcommandTerm(const std::string& str) const {
-    return (outputHasColors && !str.empty()) ? polycpp::util::styleText("yellow", str) : str;
+    return (outputHasColors_ && !str.empty()) ? polycpp::util::styleText("yellow", str) : str;
 }
 
 inline std::string Help::styleSubcommandDescription(const std::string& str) const {
@@ -553,7 +563,7 @@ inline std::string Help::styleSubcommandDescription(const std::string& str) cons
 }
 
 inline std::string Help::styleArgumentTerm(const std::string& str) const {
-    return (outputHasColors && !str.empty()) ? polycpp::util::styleText("yellow", str) : str;
+    return (outputHasColors_ && !str.empty()) ? polycpp::util::styleText("yellow", str) : str;
 }
 
 inline std::string Help::styleArgumentDescription(const std::string& str) const {
@@ -561,7 +571,7 @@ inline std::string Help::styleArgumentDescription(const std::string& str) const 
 }
 
 inline std::string Help::styleDescriptionText(const std::string& str) const {
-    return (outputHasColors && !str.empty()) ? polycpp::util::styleText("dim", str) : str;
+    return (outputHasColors_ && !str.empty()) ? polycpp::util::styleText("dim", str) : str;
 }
 
 inline std::string Help::formatHelp(const Command& cmd, const Help& helper) const {
@@ -578,7 +588,7 @@ inline std::string Help::formatHelp(const Command& cmd, const Help& helper) cons
     // Description
     std::string desc = helper.commandDescription(cmd);
     if (!desc.empty()) {
-        int hw = helper.helpWidth > 0 ? helper.helpWidth : 80;
+        int hw = helper.helpWidth() > 0 ? helper.helpWidth() : 80;
         output += "\n" + helper.boxWrap(helper.styleCommandDescription(desc), hw) + "\n";
     }
 
@@ -605,7 +615,7 @@ inline std::string Help::formatHelp(const Command& cmd, const Help& helper) cons
     }
 
     // Global Options
-    if (helper.showGlobalOptions) {
+    if (helper.showGlobalOptions()) {
         auto globalOpts = helper.visibleGlobalOptions(cmd);
         if (!globalOpts.empty()) {
             output += "\n" + helper.styleTitle("Global Options:") + "\n";
