@@ -32,6 +32,7 @@
 | `Command#executableDir(path)` / `executableDir()` | `Command::executableDir(path)` / `Command::executableDir()` | direct | |
 | `Command#addCommand(cmd, opts?)` | `Command::addCommand(Command, opts?)` | direct | Takes a `Command` handle by value (sink). |
 | `Command#createCommand(name)` | `virtual Command::createCommand(name) const` | direct | Virtual factory. Returns a `Command` handle by value. |
+| `Command#parent` | `Command::parent() -> std::optional<Command>` and `Command::hasParent() noexcept` | adapted | Upstream returns the parent `Command` or `null`/`undefined`; the C++ port wraps the result in `std::optional`. Backed by `std::weak_ptr<Impl>`, so `parent()` returns `std::nullopt` both when there is no parent and when the parent has gone out of scope. |
 | `Command#action(fn)` | `Command::action(ActionFn)` | direct | Sync action handler. |
 | `Command#action(asyncFn)` | `Command::actionAsync(AsyncActionFn)` | adapted | Split from sync overload for type clarity (see Divergences). |
 | `Command#parse(argv?, opts?)` | `Command::parse(argv?, opts?)` overloads | direct | No-arg overload reads `polycpp::process::argv()`. |

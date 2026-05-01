@@ -57,7 +57,11 @@ struct Command::Impl {
     // Subcommand graph. `std::deque` so references handed out by
     // `Command::command(...)` survive subsequent inserts.
     std::deque<Command> commands_;
-    Command::Impl* parent_ = nullptr;
+    /// Weak reference to the parent command's Impl. weak_ptr (rather
+    /// than a raw pointer) ensures `Command::parent()` cannot
+    /// dereference freed memory if a child handle is copied out and
+    /// outlives its parent.
+    std::weak_ptr<Command::Impl> parent_;
 
     // Options & arguments
     std::vector<Option> options_;

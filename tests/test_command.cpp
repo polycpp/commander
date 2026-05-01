@@ -1177,3 +1177,62 @@ TEST(CommandTest, ActionAsyncReturnsThis) {
     });
     EXPECT_EQ(&ref, &cmd);
 }
+
+// ============ Parent (weak_ptr) lifetime tests ============
+
+TEST(CommandTest, ParentReturnsNulloptForRoot) {
+    Command prog;
+    EXPECT_FALSE(prog.hasParent());
+    EXPECT_FALSE(prog.parent().has_value());
+}
+
+TEST(CommandTest, ParentReturnsAliveParent) {
+    Command prog("app");
+    auto sub = prog.command("sub");
+    ASSERT_TRUE(sub.hasParent());
+    auto parent = sub.parent();
+    ASSERT_TRUE(parent.has_value());
+    EXPECT_EQ(parent->name(), "app");
+}
+
+TEST(CommandTest, ParentReturnsNulloptAfterParentDestroyed) {
+    // Reproduces the dangling-pointer bug that motivated weak_ptr migration.
+    // Copy a child handle out of its parent, then drop the parent. The
+    // child's parent() must report nullopt rather than dereference a
+    // freed Command::Impl.
+    std::optional<Command> sub;
+    {
+        Command prog("app");
+        prog.command("sub");
+        sub = prog.commands().front();   // copy the child handle out
+    }
+    ASSERT_TRUE(sub.has_value());
+    EXPECT_FALSE(sub->hasParent());
+    EXPECT_FALSE(sub->parent().has_value());
+}
+
+TEST(CommandTest, ParentChainSurvivesIntermediateAddCommand) {
+    // Inserting more siblings into the parent's deque must not invalidate
+    // the parent_ weak_ptr — the parent's Impl lifetime is untouched by
+    // deque growth.
+    Command prog("app");
+    auto first = prog.command("first");
+    prog.command("second");
+    prog.command("third");
+    ASSERT_TRUE(first.hasParent());
+    EXPECT_EQ(first.parent()->name(), "app");
+}
+
+TEST(CommandTest, OptsWithGlobalsStillReachesRootAncestor) {
+    // Sanity check that ancestor-walking code paths still work end-to-end
+    // after the weak_ptr migration. optsWithGlobals walks parent chain.
+    Command prog("app");
+    prog.option("--global");
+    Command sub = prog.command("sub");
+    sub.action([](const std::vector<polycpp::JsonValue>&,
+                  const polycpp::JsonValue&, Command&) {});
+    prog.parse({"--global", "sub"}, {.from = "user"});
+    auto opts = sub.optsWithGlobals();
+    EXPECT_TRUE(opts["global"].isBool());
+    EXPECT_TRUE(opts["global"].asBool());
+}

@@ -256,7 +256,12 @@ Decisions:
     `polycpp::events::EventEmitterForwarder`. Copies of the handle share
     the same Impl, mirroring the JS reference-semantics model.
     Subcommands are now stored as `std::vector<Command>` (handles by
-    value). The unique_ptr-based ownership has been removed.
+    value). The unique_ptr-based ownership has been removed. The
+    parent back-link on `Command::Impl` is held as a
+    `std::weak_ptr<Command::Impl>`, so a child handle copied out of its
+    parent and outliving it sees `parent()` return `std::nullopt`
+    instead of dereferencing freed memory; `Command::parent()` returns
+    `std::optional<Command>` to surface the lifetime model.
   - `polycpp::process::env()` shape changed (commit 2dc8401 adapted to flat
     string map). The implementation already tracks this; no further gap.
   - `polycpp::child_process::spawn` does not implement Windows-specific

@@ -128,7 +128,8 @@ inline std::vector<Option> Help::visibleGlobalOptions(const Command& cmd) const 
     if (!showGlobalOptions_) return {};
 
     std::vector<Option> result;
-    for (auto* ancestor = cmd.impl_->parent_; ancestor != nullptr; ancestor = ancestor->parent_) {
+    // parent_ is a weak_ptr; lock at each step.
+    for (auto ancestor = cmd.impl_->parent_.lock(); ancestor; ancestor = ancestor->parent_.lock()) {
         for (const auto& opt : ancestor->options_) {
             if (!opt.hidden) {
                 result.push_back(opt);
@@ -368,7 +369,8 @@ inline std::string Help::commandUsage(const Command& cmd) const {
     }
 
     std::string ancestorNames;
-    for (auto* ancestor = cmd.impl_->parent_; ancestor != nullptr; ancestor = ancestor->parent_) {
+    // parent_ is a weak_ptr; lock at each step.
+    for (auto ancestor = cmd.impl_->parent_.lock(); ancestor; ancestor = ancestor->parent_.lock()) {
         ancestorNames = ancestor->name_ + " " + ancestorNames;
     }
 
