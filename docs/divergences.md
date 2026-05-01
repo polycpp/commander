@@ -14,6 +14,16 @@
   `argv`. The port replaces this with an explicit
   `parse(argv, {.from = "electron"})` opt-in. Auto-detection can be added
   later by reading `polycpp::process::env("ELECTRON_RUN_AS_NODE")`.
+- **Signal forwarding for stand-alone executable subcommands.** Upstream
+  attaches a `SIGINT`/`SIGTERM` listener that forwards the signal from
+  the parent to the spawned child via `child.kill(signal)`. The C++
+  dispatch path uses `polycpp::child_process::spawnSync`, which blocks
+  the parent thread inside the synchronous wait until the child exits;
+  asynchronous signal forwarding has no effect on a sync wait, so the
+  feature is deferred until the dispatch is reworked on top of `spawn()`.
+  This is also why `tests/command.executableSubcommand.signals.test.js`
+  has no local counterpart in `tests/test_executable.cpp` — see
+  `docs/test-plan.md` for the omitted-tests note.
 
 ## Deliberate Behavior Changes
 

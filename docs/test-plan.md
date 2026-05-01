@@ -78,11 +78,40 @@ upstream cluster into the matching `tests/test_<area>.cpp`:
   - `tests/program.test.js`, `tests/commander.configureCommand.test.js`,
     `tests/negatives.test.js`, `tests/command.asterisk.test.js` →
     `tests/test_integration.cpp`
+  - `tests/command.executableSubcommand.test.js`,
+    `tests/command.executableSubcommand.lookup.test.js`,
+    `tests/command.executableSubcommand.search.test.js`,
+    `tests/command.executableSubcommand.mock.test.js` →
+    `tests/test_executable.cpp` (23 cases). The new target compiles two
+    stand-alone fixture programs (`tests/fixtures/echo_argv.cpp`,
+    `tests/fixtures/exit_with_code.cpp`) into
+    `${CMAKE_BINARY_DIR}/test_fixtures/` and exercises real
+    `child_process::spawnSync` calls. Covered scenarios: default
+    `<prog>-<sub>` name resolution; explicit `executableFile` (relative,
+    absolute, and `./bin/...` path-containing forms); `executableDir`
+    precedence over `PATH`; `executableDir` joined relative to
+    `scriptPath` (node-mode parse); fall-back PATH search;
+    missing-executable `commander.executeSubCommandAsync` error;
+    operands and unknown args forwarded to child in the documented
+    order; `--` separator behaviour; non-zero/zero child exit
+    propagation; non-executable candidates skipped during search;
+    fluent-chain return-`*this` semantics; `executableHandler_` flag
+    flipping behaviour-verified via the spawn dispatch path; mandatory
+    + conflicting option checks firing **before** spawn;
+    `addCommand(...)` of an executable-flagged sub still routing to the
+    spawn path; `parseAsync()` reaching the same dispatch path; help
+    output listing executable subcommands.
 - omitted upstream cases:
-  - `tests/command.executableSubcommand.*.test.js` (6 files) — partial:
-    POSIX search and signal forwarding are exercised by
-    `tests/test_integration.cpp`. Windows `.cmd`/`.bat` lookup is omitted
-    because Windows shim handling is deferred (see `docs/divergences.md`).
+  - `tests/command.executableSubcommand.signals.test.js` — omitted; the
+    test sends `SIGTERM` to the parent and asserts the child receives
+    it. Our dispatch path uses `polycpp::child_process::spawnSync` which
+    blocks the parent thread until the child exits, leaving no
+    deterministic way to assert signal forwarding from inside a single
+    GoogleTest case. Documented as a deferred limitation in
+    `docs/divergences.md`.
+  - `tests/command.executableSubcommand.inspect.test.js` — omitted;
+    covers `node --inspect` argv splitting (Node-runtime specific) which
+    is also deferred.
   - `tests/incrementNodeInspectorPort.test.js` — omitted; covers
     `node --inspect` argv-rewriting which is deferred.
   - `tests/deprecated.test.js` — omitted; covers JS-only deprecation
@@ -113,8 +142,9 @@ upstream cluster into the matching `tests/test_<area>.cpp`:
   (covered in `tests/test_command.cpp`).
 - suggestion output does not echo arbitrary user input back without
   sanitization (covered in `tests/test_suggest_similar.cpp`).
-- `executableDir` traversal is bounded (covered in
-  `tests/test_integration.cpp`).
+- `executableDir` lookup precedence and `findProgram_` path search is
+  bounded by `accessSync(..., kX_OK)` (covered in
+  `tests/test_executable.cpp`).
 
 ## Protocol/client tests
 

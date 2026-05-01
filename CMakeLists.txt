@@ -66,6 +66,28 @@ if(POLYCPP_COMMANDER_BUILD_TESTS)
         target_link_libraries(${test_target} PRIVATE polycpp::commander GTest::gtest_main)
         gtest_discover_tests(${test_target})
     endforeach()
+
+    # Stand-alone executable subcommand tests need real on-disk programs to
+    # spawn. Build small fixture binaries (NOT linked against polycpp_commander
+    # — they run in a separate process) under a known directory and pass that
+    # directory in via a compile definition so the test code can resolve them.
+    foreach(fixture IN ITEMS echo_argv exit_with_code)
+        set(fixture_target "polycpp_commander_test_executable_fixture_${fixture}")
+        add_executable(${fixture_target} tests/fixtures/${fixture}.cpp)
+        set_target_properties(${fixture_target} PROPERTIES
+            OUTPUT_NAME ${fixture}
+            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/test_fixtures")
+    endforeach()
+
+    add_executable(polycpp_commander_test_executable tests/test_executable.cpp)
+    target_link_libraries(polycpp_commander_test_executable PRIVATE
+        polycpp::commander GTest::gtest_main)
+    target_compile_definitions(polycpp_commander_test_executable PRIVATE
+        POLYCPP_COMMANDER_TEST_FIXTURE_DIR="${CMAKE_BINARY_DIR}/test_fixtures")
+    add_dependencies(polycpp_commander_test_executable
+        polycpp_commander_test_executable_fixture_echo_argv
+        polycpp_commander_test_executable_fixture_exit_with_code)
+    gtest_discover_tests(polycpp_commander_test_executable)
 endif()
 
 # Examples are off by default; turn on locally to build the runnable demos
