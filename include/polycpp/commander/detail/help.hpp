@@ -47,21 +47,21 @@ inline void Help::prepareContext(const PrepareContextOptions& options) {
 
 inline std::vector<const Command*> Help::visibleCommands(const Command& cmd) const {
     std::vector<const Command*> result;
-    for (const auto& sub : cmd.commands) {
-        if (!sub->hidden_) {
-            result.push_back(sub.get());
+    for (const auto& sub : cmd.impl_->commands_) {
+        if (!sub.impl_->hidden_) {
+            result.push_back(&sub);
         }
     }
 
     // Include implicit help command
     auto* helpCmd = const_cast<Command&>(cmd).getHelpCommand_();
-    if (helpCmd && !helpCmd->hidden_) {
+    if (helpCmd && !helpCmd->impl_->hidden_) {
         result.push_back(helpCmd);
     }
 
     if (sortSubcommands) {
         std::sort(result.begin(), result.end(), [](const Command* a, const Command* b) {
-            return a->name_ < b->name_;
+            return a->impl_->name_ < b->impl_->name_;
         });
     }
     return result;
@@ -69,7 +69,7 @@ inline std::vector<const Command*> Help::visibleCommands(const Command& cmd) con
 
 inline std::vector<Option> Help::visibleOptions(const Command& cmd) const {
     std::vector<Option> result;
-    for (const auto& opt : cmd.options) {
+    for (const auto& opt : cmd.impl_->options_) {
         if (!opt.hidden) {
             result.push_back(opt);
         }
@@ -118,8 +118,8 @@ inline std::vector<Option> Help::visibleGlobalOptions(const Command& cmd) const 
     if (!showGlobalOptions) return {};
 
     std::vector<Option> result;
-    for (auto* ancestor = cmd.parent; ancestor != nullptr; ancestor = ancestor->parent) {
-        for (const auto& opt : ancestor->options) {
+    for (auto* ancestor = cmd.impl_->parent_; ancestor != nullptr; ancestor = ancestor->parent_) {
+        for (const auto& opt : ancestor->options_) {
             if (!opt.hidden) {
                 result.push_back(opt);
             }
@@ -150,7 +150,7 @@ inline std::vector<Option> Help::visibleGlobalOptions(const Command& cmd) const 
 inline std::vector<const Argument*> Help::visibleArguments(const Command& cmd) const {
     // If any argument has a description, return all of them
     bool anyDescription = false;
-    for (const auto& arg : cmd.registeredArguments) {
+    for (const auto& arg : cmd.impl_->registeredArguments_) {
         if (!arg.description.empty()) {
             anyDescription = true;
             break;
@@ -159,7 +159,7 @@ inline std::vector<const Argument*> Help::visibleArguments(const Command& cmd) c
     if (!anyDescription) return {};
 
     std::vector<const Argument*> result;
-    for (const auto& arg : cmd.registeredArguments) {
+    for (const auto& arg : cmd.impl_->registeredArguments_) {
         result.push_back(&arg);
     }
     return result;
@@ -167,16 +167,16 @@ inline std::vector<const Argument*> Help::visibleArguments(const Command& cmd) c
 
 inline std::string Help::subcommandTerm(const Command& cmd) const {
     std::string args;
-    for (const auto& arg : cmd.registeredArguments) {
+    for (const auto& arg : cmd.impl_->registeredArguments_) {
         if (!args.empty()) args += ' ';
         args += humanReadableArgName(arg);
     }
 
-    std::string result = cmd.name_;
-    if (!cmd.aliases_.empty()) {
-        result += '|' + cmd.aliases_[0];
+    std::string result = cmd.impl_->name_;
+    if (!cmd.impl_->aliases_.empty()) {
+        result += '|' + cmd.impl_->aliases_[0];
     }
-    if (!cmd.options.empty()) {
+    if (!cmd.impl_->options_.empty()) {
         result += " [options]";
     }
     if (!args.empty()) {
@@ -186,9 +186,9 @@ inline std::string Help::subcommandTerm(const Command& cmd) const {
 }
 
 inline std::string Help::subcommandDescription(const Command& cmd) const {
-    std::string s = cmd.summary_;
+    std::string s = cmd.impl_->summary_;
     if (!s.empty()) return s;
-    return cmd.description_;
+    return cmd.impl_->description_;
 }
 
 inline std::string Help::optionTerm(const Option& option) const {
@@ -352,21 +352,21 @@ inline int Help::longestArgumentTermLength(const Command& cmd) const {
 }
 
 inline std::string Help::commandUsage(const Command& cmd) const {
-    std::string cmdName = cmd.name_;
-    if (!cmd.aliases_.empty()) {
-        cmdName += '|' + cmd.aliases_[0];
+    std::string cmdName = cmd.impl_->name_;
+    if (!cmd.impl_->aliases_.empty()) {
+        cmdName += '|' + cmd.impl_->aliases_[0];
     }
 
     std::string ancestorNames;
-    for (auto* ancestor = cmd.parent; ancestor != nullptr; ancestor = ancestor->parent) {
-        ancestorNames = ancestor->name() + " " + ancestorNames;
+    for (auto* ancestor = cmd.impl_->parent_; ancestor != nullptr; ancestor = ancestor->parent_) {
+        ancestorNames = ancestor->name_ + " " + ancestorNames;
     }
 
     return ancestorNames + cmdName + " " + cmd.usage();
 }
 
 inline std::string Help::commandDescription(const Command& cmd) const {
-    return cmd.description_;
+    return cmd.impl_->description_;
 }
 
 inline int Help::padWidth(const Command& cmd) const {

@@ -3,13 +3,13 @@
 | Upstream symbol | C++ symbol | Status | Notes |
 |---|---|---|---|
 | `commander.program` | `polycpp::commander::program()` | direct | Returns reference to a process-lifetime singleton. |
-| `commander.Command` | `polycpp::commander::Command` | direct | Extends `polycpp::events::EventEmitter`; non-copyable. |
+| `commander.Command` | `polycpp::commander::Command` | direct | Handle wrapping `std::shared_ptr<Impl>`; copies share state. Inherits from `polycpp::events::EventEmitterForwarder`. |
 | `commander.Option` | `polycpp::commander::Option` | direct | |
 | `commander.Argument` | `polycpp::commander::Argument` | direct | |
 | `commander.Help` | `polycpp::commander::Help` | direct | All methods virtual for subclassing. |
 | `commander.CommanderError` | `polycpp::commander::CommanderError` | direct | Extends `polycpp::Error`; carries `exitCode` and `code`. |
 | `commander.InvalidArgumentError` | `polycpp::commander::InvalidArgumentError` | direct | Subclass of `CommanderError`; throw from custom parsers. |
-| `commander.createCommand(name)` | `polycpp::commander::createCommand(name)` | adapted | Returns `std::unique_ptr<Command>` (see Divergences) because `Command` is non-copyable. |
+| `commander.createCommand(name)` | `polycpp::commander::createCommand(name)` | direct | Returns a `Command` handle by value; copies share state via `std::shared_ptr<Impl>`. |
 | `commander.createOption(flags, desc)` | `polycpp::commander::createOption(flags, desc)` | direct | Returns by value. |
 | `commander.createArgument(name, desc)` | `polycpp::commander::createArgument(name, desc)` | direct | Returns by value. |
 | `Command#name(str)` / `name()` | `Command::name(str)` / `Command::name()` | direct | Dual getter/setter. |
@@ -30,8 +30,8 @@
 | `Command#command(spec, opts?)` | `Command::command(spec, opts?)` | direct | Returns reference to the new subcommand. |
 | `Command#command(spec, desc, opts?)` (executable form) | `Command::executableCommand(spec, desc, executableFile?)` | adapted | JS overloads on the same name; C++ splits into a separate explicit method to keep types unambiguous. |
 | `Command#executableDir(path)` / `executableDir()` | `Command::executableDir(path)` / `Command::executableDir()` | direct | |
-| `Command#addCommand(cmd, opts?)` | `Command::addCommand(unique_ptr<Command>, opts?)` | adapted | Takes ownership via `unique_ptr` because `Command` is non-copyable. |
-| `Command#createCommand(name)` | `virtual Command::createCommand(name) const` | direct | Virtual factory. |
+| `Command#addCommand(cmd, opts?)` | `Command::addCommand(Command, opts?)` | direct | Takes a `Command` handle by value (sink). |
+| `Command#createCommand(name)` | `virtual Command::createCommand(name) const` | direct | Virtual factory. Returns a `Command` handle by value. |
 | `Command#action(fn)` | `Command::action(ActionFn)` | direct | Sync action handler. |
 | `Command#action(asyncFn)` | `Command::actionAsync(AsyncActionFn)` | adapted | Split from sync overload for type clarity (see Divergences). |
 | `Command#parse(argv?, opts?)` | `Command::parse(argv?, opts?)` overloads | direct | No-arg overload reads `polycpp::process::argv()`. |
@@ -46,7 +46,7 @@
 | `Command#getOptionValueSourceWithGlobals(key)` | `Command::getOptionValueSourceWithGlobals(key)` | direct | |
 | `Command#helpOption(flags, desc)` / `(false)` | `Command::helpOption(flags, desc)` / `helpOption(bool)` | direct | Two overloads. |
 | `Command#helpCommand(spec, desc)` / `(bool)` | `Command::helpCommand(spec, desc)` / `helpCommand(bool)` | direct | Two overloads. |
-| `Command#addHelpCommand(cmd)` | `Command::addHelpCommand(unique_ptr<Command>)` | adapted | Ownership via `unique_ptr`. |
+| `Command#addHelpCommand(cmd)` | `Command::addHelpCommand(Command)` | direct | Takes a `Command` handle by value (sink). |
 | `Command#outputHelp(ctx?)` | `Command::outputHelp(ctx?)` | direct | |
 | `Command#helpInformation(ctx?)` | `Command::helpInformation(ctx?)` | direct | |
 | `Command#help(ctx?)` | `Command::help(ctx?)` | direct | Calls `outputHelp` and exits. |
@@ -146,11 +146,11 @@
   `hookAsync` accept `AsyncActionFn` / `AsyncHookFn` returning
   `polycpp::Promise<void>`. Sync handlers wrap into immediately-resolving
   promises so a single `parseAsync()` call can drive a mix.
-- EventEmitter APIs: `Command extends polycpp::events::EventEmitter`. User
-  listeners attached with `prog.on("option:verbose", cb)` see the same
-  events upstream emits: `option:<flag>`, `optionEnv:<flag>`, plus the hook
-  lifecycle events `preSubcommand` / `preAction` / `postAction` (these are
-  also invocable through `Command::hook(event, fn)`).
+- EventEmitter APIs: `Command` extends `polycpp::events::EventEmitterForwarder`,
+  which forwards typed event operations to an `EventEmitter` owned by the
+  command's Impl. User listeners attached with `prog.on(SomeEvent, cb)` see
+  the same events the library emits internally for option / hook lifecycle
+  dispatch (also invocable through `Command::hook(event, fn)`).
 - Server/listener APIs: not applicable.
 - Diagnostic/tracing APIs: not applicable.
 - Stream APIs: not applicable. Output is line-oriented through

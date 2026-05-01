@@ -174,12 +174,15 @@ Decisions:
   companions, hosted via the standard `.github/workflows/docs.yml`.
 - README structure: install via FetchContent, prerequisites, build, basic
   usage, link to the docs site. Same skeleton as the other companions.
-- Deliberate deviations from existing companions: `Command` extends
-  `polycpp::events::EventEmitter`, which matches commander.js's
-  `Command extends EventEmitter` design. Ownership of subcommands uses
-  `std::vector<std::unique_ptr<Command>>` because EventEmitter is non-copyable;
-  this is a deliberate, documented divergence from commander.js's value
-  semantics. Recorded in `docs/divergences.md`.
+- Deliberate deviations from existing companions: none structural after
+  the v0.2 Handle/Impl refactor. `Command` is now a thin handle that
+  inherits from `polycpp::events::EventEmitterForwarder` (which forwards
+  typed-event operations to an internal `polycpp::events::EventEmitter`),
+  matching commander.js's `Command extends EventEmitter` design while
+  keeping JS-style reference semantics. Subcommands are stored as
+  `std::vector<Command>` (handles, not `unique_ptr`). The earlier
+  `unique_ptr`-based ownership was the only structural divergence and has
+  been resolved — see `docs/divergences.md` ▸ "Resolved (post-catch-up)".
 
 ## Polycpp ecosystem reuse analysis
 
@@ -194,8 +197,10 @@ Decisions:
   - `polycpp::process::env(name)` — backs `Option.env(name)`; the recent flat
     string-map shape is the one consumed (see commit 2dc8401)
   - `polycpp::process::exit(code)` — backs the default exit path
-  - `polycpp::events::EventEmitter` — `Command` extends this; underpins the
-    `option:flag` / `optionEnv:flag` / hook event fan-out
+  - `polycpp::events::EventEmitter` — owned by each `Command::Impl` and
+    forwarded to via `polycpp::events::EventEmitterForwarder` on the
+    public `Command` handle; underpins the `option:flag` /
+    `optionEnv:flag` / hook event fan-out
   - `polycpp::JsonValue`, `polycpp::JsonObject` — public option/argument
     value type, mirrors the dynamic JS value
   - `polycpp::Promise<T>` — return type for `parseAsync()` and the
@@ -244,11 +249,14 @@ Decisions:
   `suggestSimilar()`. Every one of these directly mirrors a commander.js
   symbol; none reimplements a primitive that exists in base polycpp or in
   another companion.
-- reuse risks or integration gaps: non-copyable `EventEmitter` forces `unique_ptr` ownership of subcommands; `polycpp::process::env()` shape evolved (already adapted in commit 2dc8401); Windows-specific `node --inspect` argv rewriting is not provided by `polycpp::child_process::spawn`. Details:
-  - `polycpp::events::EventEmitter` is non-copyable. `Command` is therefore
-    non-copyable and subcommands are owned by `std::vector<std::unique_ptr<Command>>`.
-    This is the only structural divergence from the JS API (where commands
-    are JS objects with reference semantics).
+- reuse risks or integration gaps: `polycpp::process::env()` shape evolved (already adapted in commit 2dc8401); Windows-specific `node --inspect` argv rewriting is not provided by `polycpp::child_process::spawn`. Details:
+  - `polycpp::events::EventEmitter` is non-copyable, but `Command` no
+    longer extends it directly: the v0.2 refactor moved the emitter into
+    a `Command::Impl` and made `Command` a thin handle that inherits from
+    `polycpp::events::EventEmitterForwarder`. Copies of the handle share
+    the same Impl, mirroring the JS reference-semantics model.
+    Subcommands are now stored as `std::vector<Command>` (handles by
+    value). The unique_ptr-based ownership has been removed.
   - `polycpp::process::env()` shape changed (commit 2dc8401 adapted to flat
     string map). The implementation already tracks this; no further gap.
   - `polycpp::child_process::spawn` does not implement Windows-specific

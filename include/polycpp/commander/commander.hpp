@@ -39,16 +39,22 @@ Command& program();
 
 /**
  * @brief Create a new unattached Command.
+ *
+ * Returns a `Command` handle by value. Copies of the returned handle share
+ * the same underlying state via `std::shared_ptr`, so the call site can keep
+ * chaining on the result without an arrow operator.
+ *
  * @param name Optional command name.
- * @return New Command as unique_ptr.
+ * @return New Command handle.
  * @par Example
  * @code{.cpp}
  *   auto cmd = polycpp::commander::createCommand("serve");
+ *   cmd.version("1.0").parse();
  * @endcode
  * @see https://github.com/tj/commander.js
  * @since 0.1.0
  */
-std::unique_ptr<Command> createCommand(const std::string& name = "");
+Command createCommand(const std::string& name = "");
 
 /**
  * @brief Create a new unattached Option.

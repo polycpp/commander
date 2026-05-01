@@ -157,7 +157,7 @@ TEST(IntegrationTest, NestedSubcommands) {
 
 TEST(IntegrationTest, FactoryFunctions) {
     auto cmd = createCommand("myapp");
-    EXPECT_EQ(cmd->name(), "myapp");
+    EXPECT_EQ(cmd.name(), "myapp");
 
     auto opt = createOption("-v, --verbose", "verbose");
     EXPECT_EQ(opt.name(), "verbose");

@@ -2,10 +2,11 @@
 
 /**
  * @file detail/command.hpp
- * @brief Inline implementations for the Command class.
+ * @brief Inline implementations for the Command handle.
  *
- * This file comes after all declarations and detail/help.hpp in the aggregator,
- * so all types are fully defined.
+ * Bodies operate on `impl_->...` (the per-command shared state defined in
+ * `detail/command_impl.hpp`). The aggregator includes that file before this
+ * one so all members are fully visible.
  *
  * @since 0.1.0
  */
@@ -29,24 +30,28 @@
 namespace polycpp {
 namespace commander {
 
-// ---- Constructor ----
+// ---- Constructor / destructor ----
 
 inline Command::Command(const std::string& name)
-    : name_(name), optionValues_(polycpp::JsonObject{}) {
+    : impl_(std::make_shared<Impl>()) {
+    impl_->name_ = name;
+    impl_->optionValues_ = polycpp::JsonValue(polycpp::JsonObject{});
+    setEmitter_(impl_->ee);
+
     // Set up default output configuration
-    outputConfiguration_.writeOut = [](const std::string& str) {
+    impl_->outputConfiguration_.writeOut = [](const std::string& str) {
         std::cout << str;
     };
-    outputConfiguration_.writeErr = [](const std::string& str) {
+    impl_->outputConfiguration_.writeErr = [](const std::string& str) {
         std::cerr << str;
     };
-    outputConfiguration_.outputError = [](const std::string& str,
+    impl_->outputConfiguration_.outputError = [](const std::string& str,
                                            std::function<void(const std::string&)> write) {
         write(str);
     };
-    outputConfiguration_.getOutHelpWidth = []() -> int { return 80; };
-    outputConfiguration_.getErrHelpWidth = []() -> int { return 80; };
-    outputConfiguration_.getOutHasColors = []() -> bool {
+    impl_->outputConfiguration_.getOutHelpWidth = []() -> int { return 80; };
+    impl_->outputConfiguration_.getErrHelpWidth = []() -> int { return 80; };
+    impl_->outputConfiguration_.getOutHasColors = []() -> bool {
         if (!::isatty(STDOUT_FILENO)) return false;
         auto env = polycpp::process::env();
         if (env.count("NO_COLOR")) return false;
@@ -56,7 +61,7 @@ inline Command::Command(const std::string& name)
         }
         return true;
     };
-    outputConfiguration_.getErrHasColors = []() -> bool {
+    impl_->outputConfiguration_.getErrHasColors = []() -> bool {
         if (!::isatty(STDERR_FILENO)) return false;
         auto env = polycpp::process::env();
         if (env.count("NO_COLOR")) return false;
@@ -68,35 +73,38 @@ inline Command::Command(const std::string& name)
     };
 }
 
+inline Command::~Command() = default;
+
 // ---- Metadata getters/setters ----
 
-inline std::string Command::name() const { return name_; }
-inline Command& Command::name(const std::string& str) { name_ = str; return *this; }
+inline std::string Command::name() const { return impl_->name_; }
+inline Command& Command::name(const std::string& str) { impl_->name_ = str; return *this; }
 
-inline std::string Command::description() const { return description_; }
-inline Command& Command::description(const std::string& str) { description_ = str; return *this; }
+inline std::string Command::description() const { return impl_->description_; }
+inline Command& Command::description(const std::string& str) { impl_->description_ = str; return *this; }
 
-inline std::string Command::summary() const { return summary_; }
-inline Command& Command::summary(const std::string& str) { summary_ = str; return *this; }
+inline std::string Command::summary() const { return impl_->summary_; }
+inline Command& Command::summary(const std::string& str) { impl_->summary_ = str; return *this; }
 
 inline std::string Command::usage() const {
-    if (!usage_.empty()) return usage_;
+    if (!impl_->usage_.empty()) return impl_->usage_;
 
     std::vector<std::string> parts;
-    if (!options.empty() || !helpOption_.has_value() || helpOption_ != std::nullopt) {
+    if (!impl_->options_.empty() || !impl_->helpOption_.has_value() ||
+        impl_->helpOption_ != std::nullopt) {
         // Has options or help option not disabled
         bool hasHelpOption = true;
-        if (helpOption_.has_value() && !*helpOption_) {
+        if (impl_->helpOption_.has_value() && !*impl_->helpOption_) {
             hasHelpOption = false;
         }
-        if (!options.empty() || hasHelpOption) {
+        if (!impl_->options_.empty() || hasHelpOption) {
             parts.push_back("[options]");
         }
     }
-    if (!commands.empty()) {
+    if (!impl_->commands_.empty()) {
         parts.push_back("[command]");
     }
-    for (const auto& arg : registeredArguments) {
+    for (const auto& arg : impl_->registeredArguments_) {
         parts.push_back(humanReadableArgName(arg));
     }
 
@@ -108,21 +116,21 @@ inline std::string Command::usage() const {
     return result;
 }
 
-inline Command& Command::usage(const std::string& str) { usage_ = str; return *this; }
+inline Command& Command::usage(const std::string& str) { impl_->usage_ = str; return *this; }
 
-inline std::string Command::version() const { return version_; }
+inline std::string Command::version() const { return impl_->version_; }
 
 inline Command& Command::version(const std::string& str,
                                   const std::string& flags,
                                   const std::string& desc) {
-    version_ = str;
+    impl_->version_ = str;
     Option versionOption = createOption(flags, desc);
-    versionOptionName_ = versionOption.attributeName();
+    impl_->versionOptionName_ = versionOption.attributeName();
     registerOption_(versionOption);
 
     std::string versionStr = str;
     onInternalEvent_("option:" + versionOption.name(), [this, versionStr](const std::optional<std::string>&) {
-        outputConfiguration_.writeOut(versionStr + "\n");
+        impl_->outputConfiguration_.writeOut(versionStr + "\n");
         exit_(0, "commander.version", versionStr);
     });
     return *this;
@@ -131,19 +139,19 @@ inline Command& Command::version(const std::string& str,
 // ---- Aliases ----
 
 inline std::string Command::alias() const {
-    if (aliases_.empty()) return "";
-    return aliases_[0];
+    if (impl_->aliases_.empty()) return "";
+    return impl_->aliases_[0];
 }
 
 inline Command& Command::alias(const std::string& aliasName) {
-    if (aliasName == name_) {
+    if (aliasName == impl_->name_) {
         throw std::runtime_error("Command alias can't be the same as its name");
     }
-    aliases_.push_back(aliasName);
+    impl_->aliases_.push_back(aliasName);
     return *this;
 }
 
-inline std::vector<std::string> Command::aliases() const { return aliases_; }
+inline std::vector<std::string> Command::aliases() const { return impl_->aliases_; }
 
 inline Command& Command::aliases(const std::vector<std::string>& aliasNames) {
     for (const auto& a : aliasNames) {
@@ -165,7 +173,7 @@ inline Command& Command::nameFromFilename(const std::string& filename) {
     if (dotPos != std::string::npos) {
         name = name.substr(0, dotPos);
     }
-    name_ = name;
+    impl_->name_ = name;
     return *this;
 }
 
@@ -266,7 +274,7 @@ inline Command& Command::addOption(Option option) {
 
         if (!val.isNull() && hasParseArg) {
             // Find the option to get parseArg_
-            for (auto& opt : options) {
+            for (auto& opt : impl_->options_) {
                 if (opt.attributeName() == attrName && opt.parseArg_) {
                     try {
                         std::string valStr;
@@ -366,16 +374,17 @@ inline Command& Command::arguments(const std::string& names) {
 
 inline Command& Command::addArgument(Argument argument) {
     // Check: only last argument can be variadic
-    if (!registeredArguments.empty() && registeredArguments.back().variadic) {
+    if (!impl_->registeredArguments_.empty() && impl_->registeredArguments_.back().variadic) {
         throw std::runtime_error(
-            "only the last argument can be variadic '" + registeredArguments.back().name() + "'");
+            "only the last argument can be variadic '" +
+            impl_->registeredArguments_.back().name() + "'");
     }
     // Check: required arg with default and no parser doesn't make sense
     if (argument.required && !argument.defaultValue_.isNull() && !argument.parseArg_) {
         throw std::runtime_error(
             "a default value for a required argument is never used: '" + argument.name() + "'");
     }
-    registeredArguments.push_back(std::move(argument));
+    impl_->registeredArguments_.push_back(std::move(argument));
     return *this;
 }
 
@@ -397,40 +406,39 @@ inline Command& Command::command(const std::string& nameAndArgs, const CommandOp
         cmdName = nameAndArgs;
     }
 
-    auto cmd = createCommand(cmdName);
-    Command& cmdRef = *cmd;
+    Command cmd = createCommand(cmdName);
 
-    if (opts.isDefault) defaultCommandName_ = cmdRef.name_;
-    cmdRef.hidden_ = opts.hidden;
-    if (!argsDef.empty()) cmdRef.arguments(argsDef);
+    if (opts.isDefault) impl_->defaultCommandName_ = cmd.impl_->name_;
+    cmd.impl_->hidden_ = opts.hidden;
+    if (!argsDef.empty()) cmd.arguments(argsDef);
 
-    registerCommand_(*cmd);
-    cmd->parent = this;
-    cmd->copyInheritedSettings(*this);
+    registerCommand_(cmd);
+    cmd.impl_->parent_ = this->impl_.get();
+    cmd.copyInheritedSettings(*this);
 
-    commands.push_back(std::move(cmd));
-    return cmdRef;
+    impl_->commands_.push_back(std::move(cmd));
+    return impl_->commands_.back();
 }
 
-inline Command& Command::addCommand(std::unique_ptr<Command> cmd, const CommandOptions& opts) {
-    if (cmd->name_.empty()) {
+inline Command& Command::addCommand(Command cmd, const CommandOptions& opts) {
+    if (cmd.impl_->name_.empty()) {
         throw std::runtime_error(
             "Command passed to .addCommand() must have a name\n"
             "- specify the name in Command constructor or using .name()");
     }
 
-    if (opts.isDefault) defaultCommandName_ = cmd->name_;
-    if (opts.hidden) cmd->hidden_ = true;
+    if (opts.isDefault) impl_->defaultCommandName_ = cmd.impl_->name_;
+    if (opts.hidden) cmd.impl_->hidden_ = true;
 
-    registerCommand_(*cmd);
-    cmd->parent = this;
+    registerCommand_(cmd);
+    cmd.impl_->parent_ = this->impl_.get();
 
-    commands.push_back(std::move(cmd));
+    impl_->commands_.push_back(std::move(cmd));
     return *this;
 }
 
-inline std::unique_ptr<Command> Command::createCommand(const std::string& name) const {
-    return std::make_unique<Command>(name);
+inline Command Command::createCommand(const std::string& name) const {
+    return Command(name);
 }
 
 // ---- Executable Subcommands ----
@@ -449,35 +457,35 @@ inline Command& Command::executableCommand(const std::string& nameAndArgs,
         cmdName = nameAndArgs;
     }
 
-    auto cmd = createCommand(cmdName);
-    cmd->description(description);
-    cmd->executableHandler_ = true;
+    Command cmd = createCommand(cmdName);
+    cmd.description(description);
+    cmd.impl_->executableHandler_ = true;
     if (!executableFile.empty()) {
-        cmd->executableFile_ = executableFile;
+        cmd.impl_->executableFile_ = executableFile;
     }
-    if (!argsDef.empty()) cmd->arguments(argsDef);
+    if (!argsDef.empty()) cmd.arguments(argsDef);
 
-    registerCommand_(*cmd);
-    cmd->parent = this;
-    cmd->copyInheritedSettings(*this);
+    registerCommand_(cmd);
+    cmd.impl_->parent_ = this->impl_.get();
+    cmd.copyInheritedSettings(*this);
 
-    commands.push_back(std::move(cmd));
+    impl_->commands_.push_back(std::move(cmd));
     return *this; // Return parent, not subcommand
 }
 
 inline Command& Command::executableDir(const std::string& path) {
-    executableDir_ = path;
+    impl_->executableDir_ = path;
     return *this;
 }
 
 inline std::string Command::executableDir() const {
-    return executableDir_.value_or("");
+    return impl_->executableDir_.value_or("");
 }
 
 // ---- Action ----
 
 inline Command& Command::action(ActionFn fn) {
-    actionHandler_ = [this, fn = std::move(fn)](const std::vector<polycpp::JsonValue>& processedArgs) {
+    impl_->actionHandler_ = [this, fn = std::move(fn)](const std::vector<polycpp::JsonValue>& processedArgs) {
         auto optsMap = opts();
         fn(processedArgs, optsMap, *this);
     };
@@ -510,9 +518,9 @@ inline ParseOptionsResult Command::parseOptions(const std::vector<std::string>& 
     auto negativeNumberArg = [this](const std::string& arg) -> bool {
         std::regex negNumRe("^-(\\d+|\\d*\\.\\d+)(e[+-]?\\d+)?$");
         if (!std::regex_match(arg, negNumRe)) return false;
-        // Check no digit used as short option in command hierarchy
-        for (auto* cmd : getCommandAndAncestors_()) {
-            for (const auto& opt : cmd->options) {
+        // Check no digit used as short option in command hierarchy (root included)
+        for (Command::Impl* implPtr = impl_.get(); implPtr; implPtr = implPtr->parent_) {
+            for (const auto& opt : implPtr->options_) {
                 if (opt.short_.has_value()) {
                     std::regex digitShortRe("^-\\d$");
                     if (std::regex_match(*opt.short_, digitShortRe)) {
@@ -585,7 +593,7 @@ inline ParseOptionsResult Command::parseOptions(const std::vector<std::string>& 
             const Option* option = findOption_("-" + std::string(1, arg[1]));
             if (option) {
                 if (option->required ||
-                    (option->optional && combineFlagAndOptionalValue_)) {
+                    (option->optional && impl_->combineFlagAndOptionalValue_)) {
                     // Value following in same argument
                     emitInternalEvent_("option:" + option->name(), std::string(arg.substr(2)));
                 } else {
@@ -610,12 +618,12 @@ inline ParseOptionsResult Command::parseOptions(const std::vector<std::string>& 
         }
 
         // Not a recognised option
-        if (!destIsUnknown && maybeOption(arg) && !(commands.empty() && negativeNumberArg(arg))) {
+        if (!destIsUnknown && maybeOption(arg) && !(impl_->commands_.empty() && negativeNumberArg(arg))) {
             destIsUnknown = true;
         }
 
         // Positional options: stop at subcommand
-        if ((enablePositionalOptions_ || passThroughOptions_) &&
+        if ((impl_->enablePositionalOptions_ || impl_->passThroughOptions_) &&
             operands.empty() && unknown.empty()) {
             if (findCommand_(arg)) {
                 operands.push_back(arg);
@@ -629,7 +637,7 @@ inline ParseOptionsResult Command::parseOptions(const std::vector<std::string>& 
                     operands.push_back(inputArgs[i++]);
                 }
                 break;
-            } else if (!defaultCommandName_.empty()) {
+            } else if (!impl_->defaultCommandName_.empty()) {
                 while (i < inputArgs.size()) {
                     unknown.push_back(inputArgs[i++]);
                 }
@@ -639,7 +647,7 @@ inline ParseOptionsResult Command::parseOptions(const std::vector<std::string>& 
         }
 
         // Pass through options: stop at first command-argument
-        if (passThroughOptions_) {
+        if (impl_->passThroughOptions_) {
             auto& dest = destIsUnknown ? unknown : operands;
             dest.push_back(arg);
             while (i < inputArgs.size()) {
@@ -662,14 +670,19 @@ inline ParseOptionsResult Command::parseOptions(const std::vector<std::string>& 
 // ---- Option values ----
 
 inline OptionValues Command::opts() const {
-    return optionValues_;
+    return impl_->optionValues_;
 }
 
 inline OptionValues Command::optsWithGlobals() const {
     polycpp::JsonValue result(polycpp::JsonObject{});
-    auto ancestors = getCommandAndAncestors_();
-    for (auto it = ancestors.rbegin(); it != ancestors.rend(); ++it) {
-        auto cmdOpts = (*it)->opts();
+    // Collect impls along the chain (root-most first) so values from the
+    // closer (more specific) command win.
+    std::vector<Command::Impl*> chain;
+    for (Command::Impl* implPtr = impl_.get(); implPtr; implPtr = implPtr->parent_) {
+        chain.push_back(implPtr);
+    }
+    for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
+        const auto& cmdOpts = (*it)->optionValues_;
         if (cmdOpts.isObject()) {
             for (const auto& [key, val] : cmdOpts.asObject()) {
                 result[key] = val;
@@ -680,8 +693,8 @@ inline OptionValues Command::optsWithGlobals() const {
 }
 
 inline polycpp::JsonValue Command::getOptionValue(const std::string& key) const {
-    if (optionValues_.isObject() && optionValues_.hasKey(key)) {
-        return optionValues_.asObject().at(key);
+    if (impl_->optionValues_.isObject() && impl_->optionValues_.hasKey(key)) {
+        return impl_->optionValues_.asObject().at(key);
     }
     return polycpp::JsonValue();  // null
 }
@@ -692,26 +705,27 @@ inline Command& Command::setOptionValue(const std::string& key, const polycpp::J
 
 inline Command& Command::setOptionValueWithSource(const std::string& key, const polycpp::JsonValue& value,
                                                     const std::string& source) {
-    if (!optionValues_.isObject()) {
-        optionValues_ = polycpp::JsonValue(polycpp::JsonObject{});
+    if (!impl_->optionValues_.isObject()) {
+        impl_->optionValues_ = polycpp::JsonValue(polycpp::JsonObject{});
     }
-    optionValues_[key] = value;
-    optionValueSources_[key] = source;
+    impl_->optionValues_[key] = value;
+    impl_->optionValueSources_[key] = source;
     return *this;
 }
 
 inline std::string Command::getOptionValueSource(const std::string& key) const {
-    auto it = optionValueSources_.find(key);
-    if (it != optionValueSources_.end()) return it->second;
+    auto it = impl_->optionValueSources_.find(key);
+    if (it != impl_->optionValueSources_.end()) return it->second;
     return "";
 }
 
 inline std::string Command::getOptionValueSourceWithGlobals(const std::string& key) const {
     std::string source;
-    for (auto* cmd : getCommandAndAncestors_()) {
-        auto s = cmd->getOptionValueSource(key);
-        if (!s.empty()) {
-            source = s;
+    // Walk the impl chain so the root command's source is included.
+    for (Command::Impl* implPtr = impl_.get(); implPtr; implPtr = implPtr->parent_) {
+        auto it = implPtr->optionValueSources_.find(key);
+        if (it != implPtr->optionValueSources_.end() && !it->second.empty()) {
+            source = it->second;
         }
     }
     return source;
@@ -722,15 +736,15 @@ inline std::string Command::getOptionValueSourceWithGlobals(const std::string& k
 inline Command& Command::helpOption(const std::string& flags, const std::string& description) {
     std::string f = flags.empty() ? "-h, --help" : flags;
     std::string d = description.empty() ? "display help for command" : description;
-    helpOption_ = std::make_unique<Option>(f, d);
+    impl_->helpOption_ = std::make_unique<Option>(f, d);
     return *this;
 }
 
 inline Command& Command::helpOption(bool enable) {
     if (!enable) {
-        helpOption_ = std::unique_ptr<Option>(nullptr); // disabled
+        impl_->helpOption_ = std::unique_ptr<Option>(nullptr); // disabled
     } else {
-        helpOption_.reset(); // re-enable lazy creation
+        impl_->helpOption_.reset(); // re-enable lazy creation
     }
     return *this;
 }
@@ -750,31 +764,31 @@ inline Command& Command::helpCommand(const std::string& nameAndArgs, const std::
         helpName = effectiveNameAndArgs;
     }
 
-    auto helpCmd = createCommand(helpName);
+    auto helpCmd = std::make_unique<Command>(helpName);
     helpCmd->helpOption(false);
     if (!helpArgs.empty()) helpCmd->arguments(helpArgs);
     if (!effectiveDescription.empty()) helpCmd->description(effectiveDescription);
 
-    addImplicitHelpCommand_ = true;
-    helpCommand_ = std::move(helpCmd);
+    impl_->addImplicitHelpCommand_ = true;
+    impl_->helpCommand_ = std::move(helpCmd);
     return *this;
 }
 
 inline Command& Command::helpCommand(bool enable) {
-    addImplicitHelpCommand_ = enable;
+    impl_->addImplicitHelpCommand_ = enable;
     return *this;
 }
 
-inline Command& Command::addHelpCommand(std::unique_ptr<Command> cmd) {
-    addImplicitHelpCommand_ = true;
-    helpCommand_ = std::move(cmd);
+inline Command& Command::addHelpCommand(Command cmd) {
+    impl_->addImplicitHelpCommand_ = true;
+    impl_->helpCommand_ = std::make_unique<Command>(std::move(cmd));
     return *this;
 }
 
 inline void Command::outputHelp(const HelpContext& context) {
     auto writeFunc = context.error
-        ? outputConfiguration_.writeErr
-        : outputConfiguration_.writeOut;
+        ? impl_->outputConfiguration_.writeErr
+        : impl_->outputConfiguration_.writeOut;
 
     std::string helpText = helpInformation(context);
     writeFunc(helpText);
@@ -783,13 +797,13 @@ inline void Command::outputHelp(const HelpContext& context) {
 inline std::string Command::helpInformation(const HelpContext& context) const {
     Help helper = createHelp();
     int hw = context.error
-        ? outputConfiguration_.getErrHelpWidth()
-        : outputConfiguration_.getOutHelpWidth();
+        ? impl_->outputConfiguration_.getErrHelpWidth()
+        : impl_->outputConfiguration_.getOutHelpWidth();
     bool hasColors = false;
-    if (context.error && outputConfiguration_.getErrHasColors) {
-        hasColors = outputConfiguration_.getErrHasColors();
-    } else if (!context.error && outputConfiguration_.getOutHasColors) {
-        hasColors = outputConfiguration_.getOutHasColors();
+    if (context.error && impl_->outputConfiguration_.getErrHasColors) {
+        hasColors = impl_->outputConfiguration_.getErrHasColors();
+    } else if (!context.error && impl_->outputConfiguration_.getOutHasColors) {
+        hasColors = impl_->outputConfiguration_.getOutHasColors();
     }
     helper.prepareContext({.helpWidth = hw, .outputHasColors = hasColors});
     std::string text = helper.formatHelp(*this, helper);
@@ -816,59 +830,59 @@ inline Command& Command::addHelpText(const std::string& position, const std::str
             "Expecting one of 'beforeAll', 'before', 'after', 'afterAll'");
     }
 
-    helpText_[position].push_back(text);
+    impl_->helpText_[position].push_back(text);
     return *this;
 }
 
 inline Command& Command::configureHelp(const std::map<std::string, polycpp::JsonValue>& config) {
-    helpConfiguration_ = config;
+    impl_->helpConfiguration_ = config;
     return *this;
 }
 
 inline std::map<std::string, polycpp::JsonValue> Command::configureHelp() const {
-    return helpConfiguration_;
+    return impl_->helpConfiguration_;
 }
 
 inline Command& Command::configureOutput(const OutputConfiguration& config) {
-    if (config.writeOut) outputConfiguration_.writeOut = config.writeOut;
-    if (config.writeErr) outputConfiguration_.writeErr = config.writeErr;
-    if (config.outputError) outputConfiguration_.outputError = config.outputError;
-    if (config.getOutHelpWidth) outputConfiguration_.getOutHelpWidth = config.getOutHelpWidth;
-    if (config.getErrHelpWidth) outputConfiguration_.getErrHelpWidth = config.getErrHelpWidth;
-    if (config.getOutHasColors) outputConfiguration_.getOutHasColors = config.getOutHasColors;
-    if (config.getErrHasColors) outputConfiguration_.getErrHasColors = config.getErrHasColors;
+    if (config.writeOut) impl_->outputConfiguration_.writeOut = config.writeOut;
+    if (config.writeErr) impl_->outputConfiguration_.writeErr = config.writeErr;
+    if (config.outputError) impl_->outputConfiguration_.outputError = config.outputError;
+    if (config.getOutHelpWidth) impl_->outputConfiguration_.getOutHelpWidth = config.getOutHelpWidth;
+    if (config.getErrHelpWidth) impl_->outputConfiguration_.getErrHelpWidth = config.getErrHelpWidth;
+    if (config.getOutHasColors) impl_->outputConfiguration_.getOutHasColors = config.getOutHasColors;
+    if (config.getErrHasColors) impl_->outputConfiguration_.getErrHasColors = config.getErrHasColors;
     return *this;
 }
 
 inline OutputConfiguration Command::configureOutput() const {
-    return outputConfiguration_;
+    return impl_->outputConfiguration_;
 }
 
 inline Command& Command::showHelpAfterError(bool displayHelp) {
-    showHelpAfterError_ = displayHelp;
+    impl_->showHelpAfterError_ = displayHelp;
     return *this;
 }
 
 inline Command& Command::showHelpAfterError(const std::string& message) {
-    showHelpAfterError_ = message;
+    impl_->showHelpAfterError_ = message;
     return *this;
 }
 
 inline Command& Command::showSuggestionAfterError(bool displaySuggestion) {
-    showSuggestionAfterError_ = displaySuggestion;
+    impl_->showSuggestionAfterError_ = displaySuggestion;
     return *this;
 }
 
 // ---- Error handling ----
 
 inline void Command::error(const std::string& message, const ErrorOptions& opts) {
-    outputConfiguration_.outputError(message + "\n", outputConfiguration_.writeErr);
+    impl_->outputConfiguration_.outputError(message + "\n", impl_->outputConfiguration_.writeErr);
 
-    if (std::holds_alternative<std::string>(showHelpAfterError_)) {
-        outputConfiguration_.writeErr(std::get<std::string>(showHelpAfterError_) + "\n");
-    } else if (std::holds_alternative<bool>(showHelpAfterError_) &&
-               std::get<bool>(showHelpAfterError_)) {
-        outputConfiguration_.writeErr("\n");
+    if (std::holds_alternative<std::string>(impl_->showHelpAfterError_)) {
+        impl_->outputConfiguration_.writeErr(std::get<std::string>(impl_->showHelpAfterError_) + "\n");
+    } else if (std::holds_alternative<bool>(impl_->showHelpAfterError_) &&
+               std::get<bool>(impl_->showHelpAfterError_)) {
+        impl_->outputConfiguration_.writeErr("\n");
         outputHelp({.error = true});
     }
 
@@ -877,9 +891,9 @@ inline void Command::error(const std::string& message, const ErrorOptions& opts)
 
 inline Command& Command::exitOverride(std::function<void(const CommanderError&)> fn) {
     if (fn) {
-        exitCallback_ = std::move(fn);
+        impl_->exitCallback_ = std::move(fn);
     } else {
-        exitCallback_ = [](const CommanderError& err) {
+        impl_->exitCallback_ = [](const CommanderError& err) {
             throw err;
         };
     }
@@ -895,55 +909,55 @@ inline Command& Command::hook(const std::string& event, HookFn listener) {
             "Unexpected value for event passed to hook : '" + event +
             "'.\nExpecting one of 'preSubcommand', 'preAction', 'postAction'");
     }
-    lifeCycleHooks_[event].push_back(std::move(listener));
+    impl_->lifeCycleHooks_[event].push_back(std::move(listener));
     return *this;
 }
 
 // ---- Settings ----
 
 inline Command& Command::copyInheritedSettings(const Command& sourceCommand) {
-    outputConfiguration_ = sourceCommand.outputConfiguration_;
-    exitCallback_ = sourceCommand.exitCallback_;
-    combineFlagAndOptionalValue_ = sourceCommand.combineFlagAndOptionalValue_;
-    allowExcessArguments_ = sourceCommand.allowExcessArguments_;
-    enablePositionalOptions_ = sourceCommand.enablePositionalOptions_;
-    showHelpAfterError_ = sourceCommand.showHelpAfterError_;
-    showSuggestionAfterError_ = sourceCommand.showSuggestionAfterError_;
-    helpConfiguration_ = sourceCommand.helpConfiguration_;
-    addImplicitHelpCommand_ = sourceCommand.addImplicitHelpCommand_;
+    impl_->outputConfiguration_ = sourceCommand.impl_->outputConfiguration_;
+    impl_->exitCallback_ = sourceCommand.impl_->exitCallback_;
+    impl_->combineFlagAndOptionalValue_ = sourceCommand.impl_->combineFlagAndOptionalValue_;
+    impl_->allowExcessArguments_ = sourceCommand.impl_->allowExcessArguments_;
+    impl_->enablePositionalOptions_ = sourceCommand.impl_->enablePositionalOptions_;
+    impl_->showHelpAfterError_ = sourceCommand.impl_->showHelpAfterError_;
+    impl_->showSuggestionAfterError_ = sourceCommand.impl_->showSuggestionAfterError_;
+    impl_->helpConfiguration_ = sourceCommand.impl_->helpConfiguration_;
+    impl_->addImplicitHelpCommand_ = sourceCommand.impl_->addImplicitHelpCommand_;
     return *this;
 }
 
 inline Command& Command::allowUnknownOption(bool allowUnknown) {
-    allowUnknownOption_ = allowUnknown;
+    impl_->allowUnknownOption_ = allowUnknown;
     return *this;
 }
 
 inline Command& Command::allowExcessArguments(bool allowExcess) {
-    allowExcessArguments_ = allowExcess;
+    impl_->allowExcessArguments_ = allowExcess;
     return *this;
 }
 
 inline Command& Command::enablePositionalOptions(bool positional) {
-    enablePositionalOptions_ = positional;
+    impl_->enablePositionalOptions_ = positional;
     return *this;
 }
 
 inline Command& Command::passThroughOptions(bool passThrough) {
-    passThroughOptions_ = passThrough;
+    impl_->passThroughOptions_ = passThrough;
     checkForBrokenPassThrough_();
     return *this;
 }
 
 inline Command& Command::combineFlagAndOptionalValue(bool combine) {
-    combineFlagAndOptionalValue_ = combine;
+    impl_->combineFlagAndOptionalValue_ = combine;
     return *this;
 }
 
 inline Help Command::createHelp() const {
     Help help;
     // Apply configuration
-    for (const auto& [key, val] : helpConfiguration_) {
+    for (const auto& [key, val] : impl_->helpConfiguration_) {
         if (key == "helpWidth" && val.isNumber()) {
             help.helpWidth = val.asInt();
         } else if (key == "sortSubcommands" && val.isBool()) {
@@ -955,6 +969,35 @@ inline Help Command::createHelp() const {
         }
     }
     return help;
+}
+
+// ---- Object-property accessors ----
+
+inline const std::deque<Command>& Command::commands() const { return impl_->commands_; }
+inline const std::vector<Option>& Command::options() const { return impl_->options_; }
+inline const std::vector<Argument>& Command::registeredArguments() const {
+    return impl_->registeredArguments_;
+}
+inline const std::vector<std::string>& Command::args() const { return impl_->args_; }
+inline const std::vector<std::string>& Command::rawArgs() const { return impl_->rawArgs_; }
+inline const std::vector<polycpp::JsonValue>& Command::processedArgs() const {
+    return impl_->processedArgs_;
+}
+inline bool Command::hidden() const { return impl_->hidden_; }
+inline bool Command::hasParent() const { return impl_->parent_ != nullptr; }
+inline Command Command::parent() const {
+    if (!impl_->parent_) return Command();
+    // Reconstitute a handle that shares ownership of the parent's Impl.
+    // The parent Impl is reachable from this command's own Impl, which in
+    // turn is itself owned by the parent's commands_ deque -- so the
+    // parent's Impl is alive whenever this child is. We use the aliasing
+    // shared_ptr constructor to make a handle whose ref counting tracks
+    // this child's control block but whose stored pointer is the parent.
+    auto aliasPtr = std::shared_ptr<Impl>(impl_, impl_->parent_);
+    Command result;
+    result.impl_ = std::move(aliasPtr);
+    result.setEmitter_(result.impl_->ee);
+    return result;
 }
 
 // ---- Error reporting methods ----
@@ -975,22 +1018,34 @@ inline void Command::missingMandatoryOptionValue(const Option& option) {
 }
 
 inline void Command::unknownOption(const std::string& flag) {
-    if (allowUnknownOption_) return;
+    if (impl_->allowUnknownOption_) return;
     std::string suggestion;
 
-    if (flag.size() >= 2 && flag[0] == '-' && flag[1] == '-' && showSuggestionAfterError_) {
+    if (flag.size() >= 2 && flag[0] == '-' && flag[1] == '-' && impl_->showSuggestionAfterError_) {
         std::vector<std::string> candidateFlags;
-        auto* cmd = this;
-        do {
-            auto helper = cmd->createHelp();
-            auto visOpts = helper.visibleOptions(*cmd);
-            for (const auto& opt : visOpts) {
-                if (opt.long_.has_value()) {
+        // Walk this command + ancestors. We cannot rely on
+        // getCommandAndAncestors_() here because that function stops at the
+        // root (the root's handle is not nested in any commands_ deque).
+        // For suggestion building it is sufficient to walk the impl chain
+        // and read options off each ancestor's Impl directly.
+        auto helper = createHelp();
+        auto visOpts = helper.visibleOptions(*this);
+        for (const auto& opt : visOpts) {
+            if (opt.long_.has_value()) {
+                candidateFlags.push_back(*opt.long_);
+            }
+        }
+        Command::Impl* ancestorImpl = impl_->parent_;
+        Command::Impl* prevImpl = impl_.get();
+        while (ancestorImpl && !prevImpl->enablePositionalOptions_) {
+            for (const auto& opt : ancestorImpl->options_) {
+                if (!opt.hidden && opt.long_.has_value()) {
                     candidateFlags.push_back(*opt.long_);
                 }
             }
-            cmd = cmd->parent;
-        } while (cmd && !cmd->enablePositionalOptions_);
+            prevImpl = ancestorImpl;
+            ancestorImpl = ancestorImpl->parent_;
+        }
         suggestion = suggestSimilar(flag, candidateFlags);
     }
 
@@ -999,10 +1054,10 @@ inline void Command::unknownOption(const std::string& flag) {
 }
 
 inline void Command::unknownCommand() {
-    std::string unknownName = args.empty() ? "" : args[0];
+    std::string unknownName = impl_->args_.empty() ? "" : impl_->args_[0];
     std::string suggestion;
 
-    if (showSuggestionAfterError_) {
+    if (impl_->showSuggestionAfterError_) {
         std::vector<std::string> candidateNames;
         auto helper = createHelp();
         for (const auto* sub : helper.visibleCommands(*this)) {
@@ -1020,8 +1075,8 @@ inline void Command::unknownCommand() {
 // ---- Private helpers ----
 
 inline void Command::exit_(int exitCode, const std::string& code, const std::string& message) {
-    if (exitCallback_) {
-        exitCallback_(CommanderError(exitCode, code, message));
+    if (impl_->exitCallback_) {
+        impl_->exitCallback_(CommanderError(exitCode, code, message));
         return; // In case the callback returns
     }
     std::exit(exitCode);
@@ -1030,12 +1085,12 @@ inline void Command::exit_(int exitCode, const std::string& code, const std::str
 inline std::vector<std::string> Command::prepareUserArgs_(const std::vector<std::string>& argv,
                                                            const ParseOptions& parseOpts) {
     std::vector<std::string> effectiveArgv = argv;
-    rawArgs = effectiveArgv;
+    impl_->rawArgs_ = effectiveArgv;
 
     std::vector<std::string> userArgs;
     if (parseOpts.from == "node") {
         if (effectiveArgv.size() > 1) {
-            scriptPath_ = effectiveArgv[1];
+            impl_->scriptPath_ = effectiveArgv[1];
         }
         if (effectiveArgv.size() > 2) {
             userArgs.assign(effectiveArgv.begin() + 2, effectiveArgv.end());
@@ -1044,7 +1099,7 @@ inline std::vector<std::string> Command::prepareUserArgs_(const std::vector<std:
         userArgs = effectiveArgv;
     } else if (parseOpts.from == "electron") {
         if (effectiveArgv.size() > 1) {
-            scriptPath_ = effectiveArgv[1];
+            impl_->scriptPath_ = effectiveArgv[1];
         }
         if (effectiveArgv.size() > 2) {
             userArgs.assign(effectiveArgv.begin() + 2, effectiveArgv.end());
@@ -1053,7 +1108,7 @@ inline std::vector<std::string> Command::prepareUserArgs_(const std::vector<std:
         // C++-runtime argv shape: [program, ...userArgs]. Skip just the
         // program name. Used by parse() with no arguments.
         if (!effectiveArgv.empty()) {
-            scriptPath_ = effectiveArgv.front();
+            impl_->scriptPath_ = effectiveArgv.front();
         }
         if (effectiveArgv.size() > 1) {
             userArgs.assign(effectiveArgv.begin() + 1, effectiveArgv.end());
@@ -1063,11 +1118,11 @@ inline std::vector<std::string> Command::prepareUserArgs_(const std::vector<std:
     }
 
     // Find default name
-    if (name_.empty() && !scriptPath_.empty()) {
-        nameFromFilename(scriptPath_);
+    if (impl_->name_.empty() && !impl_->scriptPath_.empty()) {
+        nameFromFilename(impl_->scriptPath_);
     }
-    if (name_.empty()) {
-        name_ = "program";
+    if (impl_->name_.empty()) {
+        impl_->name_ = "program";
     }
 
     return userArgs;
@@ -1082,8 +1137,8 @@ inline void Command::parseCommand_(const std::vector<std::string>& initialOperan
     std::vector<std::string> operands = initialOperands;
     operands.insert(operands.end(), parsed.operands.begin(), parsed.operands.end());
     auto unknownArgs = parsed.unknown;
-    args = operands;
-    args.insert(args.end(), unknownArgs.begin(), unknownArgs.end());
+    impl_->args_ = operands;
+    impl_->args_.insert(impl_->args_.end(), unknownArgs.begin(), unknownArgs.end());
 
     // Check for subcommand dispatch
     if (!operands.empty() && findCommand_(operands[0])) {
@@ -1100,14 +1155,15 @@ inline void Command::parseCommand_(const std::vector<std::string>& initialOperan
     }
 
     // Default command
-    if (!defaultCommandName_.empty()) {
+    if (!impl_->defaultCommandName_.empty()) {
         outputHelpIfRequested_(unknownArgs);
-        dispatchSubcommand_(defaultCommandName_, operands, unknownArgs);
+        dispatchSubcommand_(impl_->defaultCommandName_, operands, unknownArgs);
         return;
     }
 
     // No subcommands matched, no action, and has subcommands: show help
-    if (!commands.empty() && args.empty() && !actionHandler_ && defaultCommandName_.empty()) {
+    if (!impl_->commands_.empty() && impl_->args_.empty() && !impl_->actionHandler_ &&
+        impl_->defaultCommandName_.empty()) {
         help({.error = true});
         return;
     }
@@ -1122,12 +1178,12 @@ inline void Command::parseCommand_(const std::vector<std::string>& initialOperan
         }
     };
 
-    if (actionHandler_) {
+    if (impl_->actionHandler_) {
         checkForUnknownOptions();
         processArguments_();
 
         callHooks_("preAction");
-        actionHandler_(processedArgs);
+        impl_->actionHandler_(impl_->processedArgs_);
         callHooks_("postAction");
         return;
     }
@@ -1139,13 +1195,13 @@ inline void Command::parseCommand_(const std::vector<std::string>& initialOperan
             dispatchSubcommand_("*", subOperands, unknownArgs);
             return;
         }
-        if (!commands.empty()) {
+        if (!impl_->commands_.empty()) {
             unknownCommand();
             return;
         }
         checkForUnknownOptions();
         processArguments_();
-    } else if (!commands.empty()) {
+    } else if (!impl_->commands_.empty()) {
         checkForUnknownOptions();
         help({.error = true});
     } else {
@@ -1156,7 +1212,7 @@ inline void Command::parseCommand_(const std::vector<std::string>& initialOperan
 
 inline void Command::parseOptionsEnv_() {
     auto envObj = polycpp::process::env();
-    for (const auto& option : options) {
+    for (const auto& option : impl_->options_) {
         if (option.envVar_.has_value()) {
             auto envIt = envObj.find(*option.envVar_);
             if (envIt != envObj.end()) {
@@ -1181,12 +1237,12 @@ inline void Command::parseOptionsEnv_() {
 inline void Command::onInternalEvent_(
     const std::string& eventName,
     std::function<void(const std::optional<std::string>&)> listener) {
-    internalEventHandlers_[eventName].push_back(std::move(listener));
+    impl_->internalEventHandlers_[eventName].push_back(std::move(listener));
 }
 
 inline void Command::emitInternalEvent_(const std::string& eventName, std::optional<std::string> value) {
-    auto it = internalEventHandlers_.find(eventName);
-    if (it == internalEventHandlers_.end()) {
+    auto it = impl_->internalEventHandlers_.find(eventName);
+    if (it == impl_->internalEventHandlers_.end()) {
         return;
     }
     for (const auto& listener : it->second) {
@@ -1195,8 +1251,8 @@ inline void Command::emitInternalEvent_(const std::string& eventName, std::optio
 }
 
 inline std::string Command::renderHelpText_(const std::string& position) const {
-    auto it = helpText_.find(position);
-    if (it == helpText_.end()) {
+    auto it = impl_->helpText_.find(position);
+    if (it == impl_->helpText_.end()) {
         return "";
     }
 
@@ -1221,7 +1277,7 @@ inline void Command::parseOptionsImplied_() {
         return src != "default" && src != "implied";
     };
 
-    for (const auto& option : options) {
+    for (const auto& option : impl_->options_) {
         if (option.implied_.has_value() && hasCustomOptionValue(option.attributeName())) {
             // Check value from option (simplified DualOptions logic)
             auto val = getOptionValue(option.attributeName());
@@ -1253,31 +1309,31 @@ inline void Command::parseOptionsImplied_() {
 
 inline void Command::checkNumberOfArguments_() {
     // too few
-    for (size_t i = 0; i < registeredArguments.size(); ++i) {
-        if (registeredArguments[i].required && i >= args.size()) {
-            missingArgument(registeredArguments[i].name());
+    for (size_t i = 0; i < impl_->registeredArguments_.size(); ++i) {
+        if (impl_->registeredArguments_[i].required && i >= impl_->args_.size()) {
+            missingArgument(impl_->registeredArguments_[i].name());
         }
     }
     // too many
-    if (!registeredArguments.empty() && registeredArguments.back().variadic) {
+    if (!impl_->registeredArguments_.empty() && impl_->registeredArguments_.back().variadic) {
         return;
     }
-    if (args.size() > registeredArguments.size()) {
-        excessArguments_(args);
+    if (impl_->args_.size() > impl_->registeredArguments_.size()) {
+        excessArguments_(impl_->args_);
     }
 }
 
 inline void Command::processArguments_() {
     checkNumberOfArguments_();
 
-    processedArgs.clear();
-    for (size_t index = 0; index < registeredArguments.size(); ++index) {
-        const auto& declaredArg = registeredArguments[index];
+    impl_->processedArgs_.clear();
+    for (size_t index = 0; index < impl_->registeredArguments_.size(); ++index) {
+        const auto& declaredArg = impl_->registeredArguments_[index];
         polycpp::JsonValue value = declaredArg.defaultValue_;
 
         if (declaredArg.variadic) {
-            if (index < args.size()) {
-                std::vector<std::string> values(args.begin() + index, args.end());
+            if (index < impl_->args_.size()) {
+                std::vector<std::string> values(impl_->args_.begin() + index, impl_->args_.end());
                 if (declaredArg.parseArg_) {
                     polycpp::JsonValue processed = declaredArg.defaultValue_;
                     for (const auto& v : values) {
@@ -1296,8 +1352,8 @@ inline void Command::processArguments_() {
             } else if (value.isNull()) {
                 value = polycpp::JsonValue(polycpp::JsonArray{});
             }
-        } else if (index < args.size()) {
-            std::string argValue = args[index];
+        } else if (index < impl_->args_.size()) {
+            std::string argValue = impl_->args_[index];
             if (declaredArg.parseArg_) {
                 std::string invalidMsg = "error: command-argument value '" + argValue +
                                           "' is invalid for argument '" + declaredArg.name() + "'.";
@@ -1306,29 +1362,58 @@ inline void Command::processArguments_() {
                 value = polycpp::JsonValue(argValue);
             }
         }
-        processedArgs.push_back(value);
+        impl_->processedArgs_.push_back(value);
     }
 }
 
 inline void Command::checkForMissingMandatoryOptions_() {
-    for (const auto* cmd : getCommandAndAncestors_()) {
-        for (const auto& opt : cmd->options) {
-            if (opt.mandatory && cmd->getOptionValue(opt.attributeName()).isNull()) {
-                const_cast<Command*>(cmd)->missingMandatoryOptionValue(opt);
+    // Walk impl chain to cover the root command (which does not appear in
+    // getCommandAndAncestors_ when reached from a descendant).
+    for (Command::Impl* implPtr = impl_.get(); implPtr; implPtr = implPtr->parent_) {
+        for (const auto& opt : implPtr->options_) {
+            if (opt.mandatory) {
+                bool missing = !implPtr->optionValues_.isObject() ||
+                               !implPtr->optionValues_.hasKey(opt.attributeName()) ||
+                               implPtr->optionValues_.asObject().at(opt.attributeName()).isNull();
+                if (missing) {
+                    // Use *this for error reporting (output config inherits).
+                    missingMandatoryOptionValue(opt);
+                }
             }
         }
     }
 }
 
 inline void Command::checkForConflictingOptions_() {
-    for (const auto* cmd : getCommandAndAncestors_()) {
-        const_cast<Command*>(cmd)->checkForConflictingLocalOptions_();
+    // Walk the impl chain so that we cover the root command too.
+    for (Command::Impl* implPtr = impl_.get(); implPtr; implPtr = implPtr->parent_) {
+        std::vector<const Option*> definedNonDefault;
+        for (const auto& opt : implPtr->options_) {
+            std::string key = opt.attributeName();
+            if (!implPtr->optionValues_.isObject() || !implPtr->optionValues_.hasKey(key)) continue;
+            auto val = implPtr->optionValues_.asObject().at(key);
+            if (val.isNull()) continue;
+            auto srcIt = implPtr->optionValueSources_.find(key);
+            if (srcIt != implPtr->optionValueSources_.end() && srcIt->second == "default") continue;
+            definedNonDefault.push_back(&opt);
+        }
+
+        for (const auto* opt : definedNonDefault) {
+            if (opt->conflictsWith_.empty()) continue;
+            for (const auto* defined : definedNonDefault) {
+                if (std::find(opt->conflictsWith_.begin(), opt->conflictsWith_.end(),
+                              defined->attributeName()) != opt->conflictsWith_.end()) {
+                    conflictingOption_(*opt, *defined);
+                    return;
+                }
+            }
+        }
     }
 }
 
 inline void Command::checkForConflictingLocalOptions_() {
     std::vector<const Option*> definedNonDefault;
-    for (const auto& opt : options) {
+    for (const auto& opt : impl_->options_) {
         std::string key = opt.attributeName();
         auto val = getOptionValue(key);
         if (val.isNull()) continue;
@@ -1350,18 +1435,18 @@ inline void Command::checkForConflictingLocalOptions_() {
 }
 
 inline void Command::checkForBrokenPassThrough_() {
-    if (parent && passThroughOptions_ && !parent->enablePositionalOptions_) {
+    if (impl_->parent_ && impl_->passThroughOptions_ && !impl_->parent_->enablePositionalOptions_) {
         throw std::runtime_error(
-            "passThroughOptions cannot be used for '" + name_ +
+            "passThroughOptions cannot be used for '" + impl_->name_ +
             "' without turning on enablePositionalOptions for parent command(s)");
     }
 }
 
 inline void Command::excessArguments_(const std::vector<std::string>& receivedArgs) {
-    if (allowExcessArguments_) return;
-    int expected = static_cast<int>(registeredArguments.size());
+    if (impl_->allowExcessArguments_) return;
+    int expected = static_cast<int>(impl_->registeredArguments_.size());
     std::string s = (expected == 1) ? "" : "s";
-    std::string forSubcommand = parent ? " for '" + name() + "'" : "";
+    std::string forSubcommand = impl_->parent_ ? " for '" + name() + "'" : "";
     error("error: too many arguments" + forSubcommand +
           ". Expected " + std::to_string(expected) + " argument" + s +
           " but got " + std::to_string(static_cast<int>(receivedArgs.size())) + ".",
@@ -1399,7 +1484,7 @@ inline void Command::dispatchSubcommand_(const std::string& commandName,
     subCommand->prepareForParse_();
     callSubCommandHook_(*subCommand, "preSubcommand");
 
-    if (subCommand->executableHandler_) {
+    if (subCommand->impl_->executableHandler_) {
         executeSubCommand_(*subCommand, operands, unknown);
     } else {
         subCommand->parseCommand_(operands, unknown);
@@ -1414,22 +1499,22 @@ inline void Command::executeSubCommand_(Command& subCommand,
     checkForConflictingOptions_();
 
     // Determine executable name
-    std::string execName = subCommand.executableFile_.value_or(
-        name_ + "-" + subCommand.name());
+    std::string execName = subCommand.impl_->executableFile_.value_or(
+        impl_->name_ + "-" + subCommand.name());
 
     // Determine search directory
     std::string searchDir;
-    if (executableDir_.has_value()) {
-        searchDir = *executableDir_;
+    if (impl_->executableDir_.has_value()) {
+        searchDir = *impl_->executableDir_;
     }
 
     // If we have a scriptPath_, resolve relative to its directory
-    if (!scriptPath_.empty()) {
+    if (!impl_->scriptPath_.empty()) {
         std::string resolvedScript;
         try {
-            resolvedScript = polycpp::fs::realpathSync(scriptPath_);
+            resolvedScript = polycpp::fs::realpathSync(impl_->scriptPath_);
         } catch (...) {
-            resolvedScript = scriptPath_;
+            resolvedScript = impl_->scriptPath_;
         }
         std::string scriptDir = polycpp::path::dirname(resolvedScript);
         if (!searchDir.empty()) {
@@ -1526,7 +1611,7 @@ inline void Command::dispatchHelpCommand_(const std::string& subcommandName) {
         return;
     }
     Command* subCommand = findCommand_(subcommandName);
-    if (subCommand && !subCommand->executableHandler_) {
+    if (subCommand && !subCommand->impl_->executableHandler_) {
         subCommand->help();
         return;
     }
@@ -1537,31 +1622,37 @@ inline void Command::dispatchHelpCommand_(const std::string& subcommandName) {
 }
 
 inline void Command::callHooks_(const std::string& event) {
-    auto ancestors = getCommandAndAncestors_();
-    std::vector<std::pair<Command*, HookFn>> hooks;
-
-    // Collect hooks from ancestors (root first)
-    for (auto it = ancestors.rbegin(); it != ancestors.rend(); ++it) {
-        auto hookIt = (*it)->lifeCycleHooks_.find(event);
-        if (hookIt != (*it)->lifeCycleHooks_.end()) {
+    // Walk impl chain so we cover the root command too.
+    struct Entry { Command::Impl* impl; HookFn fn; };
+    std::vector<Entry> hooks;
+    for (Command::Impl* implPtr = impl_.get(); implPtr; implPtr = implPtr->parent_) {
+        auto hookIt = implPtr->lifeCycleHooks_.find(event);
+        if (hookIt != implPtr->lifeCycleHooks_.end()) {
             for (const auto& callback : hookIt->second) {
-                hooks.push_back({const_cast<Command*>(*it), callback});
+                hooks.push_back({implPtr, callback});
             }
         }
     }
-
+    // Reverse so root is first.
+    std::reverse(hooks.begin(), hooks.end());
     if (event == "postAction") {
         std::reverse(hooks.begin(), hooks.end());
     }
-
-    for (auto& [hookedCommand, callback] : hooks) {
-        callback(*hookedCommand, *this);
+    for (auto& entry : hooks) {
+        // We need a Command& for the callback. Synthesise a transient handle
+        // that aliases this command's control block but points at the
+        // ancestor's Impl (same trick parent() uses).
+        auto aliasPtr = std::shared_ptr<Impl>(impl_, entry.impl);
+        Command hookedCommand;
+        hookedCommand.impl_ = std::move(aliasPtr);
+        hookedCommand.setEmitter_(hookedCommand.impl_->ee);
+        entry.fn(hookedCommand, *this);
     }
 }
 
 inline void Command::callSubCommandHook_(Command& subCommand, const std::string& event) {
-    auto hookIt = lifeCycleHooks_.find(event);
-    if (hookIt != lifeCycleHooks_.end()) {
+    auto hookIt = impl_->lifeCycleHooks_.find(event);
+    if (hookIt != impl_->lifeCycleHooks_.end()) {
         for (const auto& hookFn : hookIt->second) {
             hookFn(*this, subCommand);
         }
@@ -1610,11 +1701,11 @@ inline void Command::registerOption_(Option& option) {
             ? *option.long_ : (option.short_.has_value() ? *option.short_ : "");
         throw std::runtime_error(
             "Cannot add option '" + option.flags + "'" +
-            (name_.empty() ? "" : " to command '" + name_ + "'") +
+            (impl_->name_.empty() ? "" : " to command '" + impl_->name_ + "'") +
             " due to conflicting flag '" + matchingFlag +
             "'\n-  already used by option '" + matchingOption->flags + "'");
     }
-    options.push_back(option);
+    impl_->options_.push_back(option);
 }
 
 inline void Command::registerCommand_(Command& command) {
@@ -1649,61 +1740,80 @@ inline void Command::registerCommand_(Command& command) {
 
 inline Command* Command::findCommand_(const std::string& name) {
     if (name.empty()) return nullptr;
-    for (auto& cmd : commands) {
-        if (cmd->name_ == name) return cmd.get();
-        for (const auto& a : cmd->aliases_) {
-            if (a == name) return cmd.get();
+    for (auto& cmd : impl_->commands_) {
+        if (cmd.impl_->name_ == name) return &cmd;
+        for (const auto& a : cmd.impl_->aliases_) {
+            if (a == name) return &cmd;
         }
     }
     return nullptr;
 }
 
 inline const Option* Command::findOption_(const std::string& arg) const {
-    for (const auto& opt : options) {
+    for (const auto& opt : impl_->options_) {
         if (opt.is(arg)) return &opt;
     }
     return nullptr;
 }
 
 inline const Option* Command::getHelpOption_() {
-    if (!helpOption_.has_value()) {
+    if (!impl_->helpOption_.has_value()) {
         // Lazy create
-        helpOption_ = std::make_unique<Option>("-h, --help", "display help for command");
+        impl_->helpOption_ = std::make_unique<Option>("-h, --help", "display help for command");
     }
-    return helpOption_->get();
+    return impl_->helpOption_->get();
 }
 
 inline Command* Command::getHelpCommand_() {
     bool hasImplicit = false;
-    if (addImplicitHelpCommand_.has_value()) {
-        hasImplicit = *addImplicitHelpCommand_;
+    if (impl_->addImplicitHelpCommand_.has_value()) {
+        hasImplicit = *impl_->addImplicitHelpCommand_;
     } else {
-        hasImplicit = !commands.empty() && !actionHandler_ && !findCommand_("help");
+        hasImplicit = !impl_->commands_.empty() && !impl_->actionHandler_ && !findCommand_("help");
     }
 
     if (hasImplicit) {
-        if (!helpCommand_.has_value()) {
-            auto helpCmd = createCommand("help");
+        if (!impl_->helpCommand_.has_value()) {
+            auto helpCmd = std::make_unique<Command>("help");
             helpCmd->helpOption(false);
             helpCmd->arguments("[command]");
             helpCmd->description("display help for command");
-            helpCommand_ = std::move(helpCmd);
+            impl_->helpCommand_ = std::move(helpCmd);
         }
-        return helpCommand_->get();
+        return impl_->helpCommand_->get();
     }
     return nullptr;
 }
 
 inline std::vector<const Command*> Command::getCommandAndAncestors_() const {
+    // Returns this command first, then walks up the parent chain. The root
+    // command may not be reachable as a stable `const Command*` if it lives
+    // outside any commands_ deque (e.g. the user's stack-allocated root);
+    // we still return its self pointer when we are it. Callers that only
+    // need to iterate options/values up the chain should use the impl
+    // walk directly.
     std::vector<const Command*> result;
-    for (const Command* cmd = this; cmd != nullptr; cmd = cmd->parent) {
-        result.push_back(cmd);
+    result.push_back(this);
+    Command::Impl* parentImpl = impl_->parent_;
+    while (parentImpl) {
+        const Command* parentHandle = nullptr;
+        if (parentImpl->parent_) {
+            for (const auto& sibling : parentImpl->parent_->commands_) {
+                if (sibling.impl_.get() == parentImpl) {
+                    parentHandle = &sibling;
+                    break;
+                }
+            }
+        }
+        if (!parentHandle) break;
+        result.push_back(parentHandle);
+        parentImpl = parentImpl->parent_;
     }
     return result;
 }
 
 inline void Command::prepareForParse_() {
-    if (!savedState_.has_value()) {
+    if (!impl_->savedState_.has_value()) {
         saveStateBeforeParse_();
     } else {
         restoreStateBeforeParse_();
@@ -1711,28 +1821,28 @@ inline void Command::prepareForParse_() {
 }
 
 inline void Command::saveStateBeforeParse_() {
-    savedState_ = SavedState{
-        .name = name_,
-        .optionValues = optionValues_,
-        .optionValueSources = optionValueSources_
+    impl_->savedState_ = Impl::SavedState{
+        .name = impl_->name_,
+        .optionValues = impl_->optionValues_,
+        .optionValueSources = impl_->optionValueSources_
     };
 }
 
 inline void Command::restoreStateBeforeParse_() {
-    if (!savedState_.has_value()) return;
-    name_ = savedState_->name;
-    scriptPath_.clear();
-    rawArgs.clear();
-    optionValues_ = savedState_->optionValues;
-    optionValueSources_ = savedState_->optionValueSources;
-    args.clear();
-    processedArgs.clear();
+    if (!impl_->savedState_.has_value()) return;
+    impl_->name_ = impl_->savedState_->name;
+    impl_->scriptPath_.clear();
+    impl_->rawArgs_.clear();
+    impl_->optionValues_ = impl_->savedState_->optionValues;
+    impl_->optionValueSources_ = impl_->savedState_->optionValueSources;
+    impl_->args_.clear();
+    impl_->processedArgs_.clear();
 }
 
 // ---- Async API ----
 
 inline Command& Command::actionAsync(AsyncActionFn fn) {
-    asyncActionHandler_ = [this, fn = std::move(fn)](const std::vector<polycpp::JsonValue>& processedArgs)
+    impl_->asyncActionHandler_ = [this, fn = std::move(fn)](const std::vector<polycpp::JsonValue>& processedArgs)
         -> polycpp::Promise<void> {
         auto optsMap = opts();
         return fn(processedArgs, optsMap, *this);
@@ -1747,7 +1857,7 @@ inline Command& Command::hookAsync(const std::string& event, AsyncHookFn listene
             "Unexpected value for event passed to hookAsync : '" + event +
             "'.\nExpecting one of 'preSubcommand', 'preAction', 'postAction'");
     }
-    asyncLifeCycleHooks_[event].push_back(std::move(listener));
+    impl_->asyncLifeCycleHooks_[event].push_back(std::move(listener));
     return *this;
 }
 
@@ -1773,8 +1883,8 @@ Command::parseCommandAsync_(const std::vector<std::string>& initialOperands,
     std::vector<std::string> operands = initialOperands;
     operands.insert(operands.end(), parsed.operands.begin(), parsed.operands.end());
     auto unknownArgs = parsed.unknown;
-    args = operands;
-    args.insert(args.end(), unknownArgs.begin(), unknownArgs.end());
+    impl_->args_ = operands;
+    impl_->args_.insert(impl_->args_.end(), unknownArgs.begin(), unknownArgs.end());
 
     // Subcommand dispatch
     if (!operands.empty() && findCommand_(operands[0])) {
@@ -1790,14 +1900,14 @@ Command::parseCommandAsync_(const std::vector<std::string>& initialOperands,
     }
 
     // Default command
-    if (!defaultCommandName_.empty()) {
+    if (!impl_->defaultCommandName_.empty()) {
         outputHelpIfRequested_(unknownArgs);
-        return dispatchSubcommandAsync_(defaultCommandName_, operands, unknownArgs);
+        return dispatchSubcommandAsync_(impl_->defaultCommandName_, operands, unknownArgs);
     }
 
     // No subcommands matched, no action, and has subcommands: show help
-    if (!commands.empty() && args.empty() && !actionHandler_ && !asyncActionHandler_ &&
-        defaultCommandName_.empty()) {
+    if (!impl_->commands_.empty() && impl_->args_.empty() && !impl_->actionHandler_ &&
+        !impl_->asyncActionHandler_ && impl_->defaultCommandName_.empty()) {
         help({.error = true});
         return polycpp::Promise<void>::resolve();
     }
@@ -1812,17 +1922,17 @@ Command::parseCommandAsync_(const std::vector<std::string>& initialOperands,
         }
     };
 
-    if (actionHandler_ || asyncActionHandler_) {
+    if (impl_->actionHandler_ || impl_->asyncActionHandler_) {
         checkForUnknownOptions();
         processArguments_();
 
         // Chain: preAction hooks → action → postAction hooks
         return callHooksAsync_("preAction")
             .then([this]() -> polycpp::Promise<void> {
-                if (asyncActionHandler_) {
-                    return asyncActionHandler_(processedArgs);
-                } else if (actionHandler_) {
-                    actionHandler_(processedArgs);
+                if (impl_->asyncActionHandler_) {
+                    return impl_->asyncActionHandler_(impl_->processedArgs_);
+                } else if (impl_->actionHandler_) {
+                    impl_->actionHandler_(impl_->processedArgs_);
                     return polycpp::Promise<void>::resolve();
                 }
                 return polycpp::Promise<void>::resolve();
@@ -1838,13 +1948,13 @@ Command::parseCommandAsync_(const std::vector<std::string>& initialOperands,
             std::vector<std::string> subOperands(operands.begin(), operands.end());
             return dispatchSubcommandAsync_("*", subOperands, unknownArgs);
         }
-        if (!commands.empty()) {
+        if (!impl_->commands_.empty()) {
             unknownCommand();
             return polycpp::Promise<void>::resolve();
         }
         checkForUnknownOptions();
         processArguments_();
-    } else if (!commands.empty()) {
+    } else if (!impl_->commands_.empty()) {
         checkForUnknownOptions();
         help({.error = true});
     } else {
@@ -1868,7 +1978,7 @@ Command::dispatchSubcommandAsync_(const std::string& commandName,
     subCommand->prepareForParse_();
     callSubCommandHook_(*subCommand, "preSubcommand");
 
-    if (subCommand->executableHandler_) {
+    if (subCommand->impl_->executableHandler_) {
         executeSubCommand_(*subCommand, operands, unknown);
         return polycpp::Promise<void>::resolve();
     }
@@ -1878,29 +1988,33 @@ Command::dispatchSubcommandAsync_(const std::string& commandName,
 
 inline polycpp::Promise<void>
 Command::callHooksAsync_(const std::string& event) {
-    auto ancestors = getCommandAndAncestors_();
+    // Collect impls along the chain, root first.
+    std::vector<Command::Impl*> chainImpls;
+    for (Command::Impl* implPtr = impl_.get(); implPtr; implPtr = implPtr->parent_) {
+        chainImpls.push_back(implPtr);
+    }
+    std::reverse(chainImpls.begin(), chainImpls.end());
 
     // Collect all hooks (sync + async) from ancestors
     struct HookEntry {
-        Command* command;
+        Command::Impl* implPtr;
         bool isAsync;
         size_t syncIdx;
         size_t asyncIdx;
     };
     std::vector<HookEntry> hooks;
 
-    for (auto it = ancestors.rbegin(); it != ancestors.rend(); ++it) {
-        auto* cmd = const_cast<Command*>(*it);
-        auto syncIt = cmd->lifeCycleHooks_.find(event);
-        if (syncIt != cmd->lifeCycleHooks_.end()) {
+    for (Command::Impl* implPtr : chainImpls) {
+        auto syncIt = implPtr->lifeCycleHooks_.find(event);
+        if (syncIt != implPtr->lifeCycleHooks_.end()) {
             for (size_t i = 0; i < syncIt->second.size(); ++i) {
-                hooks.push_back({cmd, false, i, 0});
+                hooks.push_back({implPtr, false, i, 0});
             }
         }
-        auto asyncIt = cmd->asyncLifeCycleHooks_.find(event);
-        if (asyncIt != cmd->asyncLifeCycleHooks_.end()) {
+        auto asyncIt = implPtr->asyncLifeCycleHooks_.find(event);
+        if (asyncIt != implPtr->asyncLifeCycleHooks_.end()) {
             for (size_t i = 0; i < asyncIt->second.size(); ++i) {
-                hooks.push_back({cmd, true, 0, i});
+                hooks.push_back({implPtr, true, 0, i});
             }
         }
     }
@@ -1911,20 +2025,29 @@ Command::callHooksAsync_(const std::string& event) {
 
     // Chain all hooks sequentially
     polycpp::Promise<void> chain = polycpp::Promise<void>::resolve();
+    auto selfImpl = impl_;  // keep alive
+    Command* actionCommand = this;
 
     for (const auto& entry : hooks) {
-        Command* hookedCommand = entry.command;
-        Command* actionCommand = this;
+        Command::Impl* hookedImpl = entry.implPtr;
 
         if (entry.isAsync) {
-            auto& hookFn = hookedCommand->asyncLifeCycleHooks_[event][entry.asyncIdx];
-            chain = chain.then([hookedCommand, actionCommand, &hookFn]() -> polycpp::Promise<void> {
-                return hookFn(*hookedCommand, *actionCommand);
+            auto& hookFn = hookedImpl->asyncLifeCycleHooks_[event][entry.asyncIdx];
+            chain = chain.then([selfImpl, hookedImpl, actionCommand, &hookFn]() -> polycpp::Promise<void> {
+                auto aliasPtr = std::shared_ptr<Command::Impl>(selfImpl, hookedImpl);
+                Command hookedCommand;
+                hookedCommand.impl_ = std::move(aliasPtr);
+                hookedCommand.setEmitter_(hookedCommand.impl_->ee);
+                return hookFn(hookedCommand, *actionCommand);
             });
         } else {
-            auto& hookFn = hookedCommand->lifeCycleHooks_[event][entry.syncIdx];
-            chain = chain.then([hookedCommand, actionCommand, &hookFn]() {
-                hookFn(*hookedCommand, *actionCommand);
+            auto& hookFn = hookedImpl->lifeCycleHooks_[event][entry.syncIdx];
+            chain = chain.then([selfImpl, hookedImpl, actionCommand, &hookFn]() {
+                auto aliasPtr = std::shared_ptr<Command::Impl>(selfImpl, hookedImpl);
+                Command hookedCommand;
+                hookedCommand.impl_ = std::move(aliasPtr);
+                hookedCommand.setEmitter_(hookedCommand.impl_->ee);
+                hookFn(hookedCommand, *actionCommand);
             });
         }
     }
