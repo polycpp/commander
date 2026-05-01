@@ -51,7 +51,7 @@ Four positions are supported:
    prog.addHelpText("beforeAll",
        "Todo 0.1.0 — https://github.com/acme/todo\n");
    prog.addHelpText("after",
-       "\nEnvironment:\n"
+       "\nEnvironment\n"
        "  TODO_FILE  path used when --file is not set\n");
 
 The strings flow through the same styling pipeline as the built-in

@@ -18,8 +18,11 @@ From the repository root:
 
 .. code-block:: bash
 
-   cmake -B build -G Ninja
-   cmake --build build --target <example_name>
-   ./build/examples/<example_name>
+   cmake -B build -G Ninja -DPOLYCPP_COMMANDER_BUILD_EXAMPLES=ON
+   cmake --build build --target polycpp_commander_example_greet
+   ./build/examples/greet alice
 
-Examples are only built when ``POLYCPP_COMMANDER_BUILD_EXAMPLES=ON`` is passed to CMake.
+Replace ``greet`` with the slug of any example listed above.
+Examples are built by default for standalone builds and only when
+``POLYCPP_COMMANDER_BUILD_EXAMPLES=ON`` is passed when this repo is
+embedded as a CMake subproject.

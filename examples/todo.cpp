@@ -56,12 +56,16 @@ int main(int argc, char** argv) {
     prog.command("add <title>")
         .description("add a new task")
         .option("-p, --priority <n>", "1 = high, 3 = low",
+                [](const std::string& s, const polycpp::JsonValue&) {
+                    return polycpp::JsonValue(std::stoi(s));
+                },
                 polycpp::JsonValue(2))
         .action([](const auto& args, const auto& opts, auto& cmd) {
             auto t = Task{nextId(), args[0].asString(),
                           opts["priority"].asInt(), false};
             store().push_back(t);
-            if (cmd.optsWithGlobals()["verbose"].asBool())
+            const auto verbose = cmd.optsWithGlobals()["verbose"];
+            if (verbose.isBool() && verbose.asBool())
                 std::cerr << "[verbose] stored #" << t.id << '\n';
             std::cout << "added #" << t.id << ": " << t.title;
             if (t.priority != 2) std::cout << " (priority " << t.priority << ")";
@@ -81,7 +85,7 @@ int main(int argc, char** argv) {
     prog.command("done <id>")
         .description("mark a task done")
         .action([](const auto& args, const auto&, auto& cmd) {
-            int id = args[0].asInt();
+            int id = std::stoi(args[0].asString());
             for (auto& t : store())
                 if (t.id == id) {
                     t.done = true;

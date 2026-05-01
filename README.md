@@ -50,9 +50,10 @@ int main(int argc, char** argv) {
     prog.parse();
 
     auto opts = prog.opts();
-    if (opts["verbose"].asBool()) {
-        std::cout << "hello, " << opts["name"].asString() << '\n';
-    }
+    const bool verbose = opts["verbose"].isBool() && opts["verbose"].asBool();
+    const std::string name = opts["name"].isString() ? opts["name"].asString() : "world";
+    if (verbose) std::cout << "[verbose] greeting " << name << '\n';
+    std::cout << "hello, " << name << '\n';
 }
 ```
 

@@ -139,10 +139,12 @@ Legend:
 
 ## Public Release
 
-- [ ] production-grade quality confirmed
-- [ ] public documentation ready
+- [x] production-grade quality confirmed
+- [x] public documentation ready
 - [x] generated docs placeholder pages replaced with real public documentation
-- [ ] public docs do not contain local absolute paths
-- [ ] `python3 docs/build.py` passes
+- [x] public docs do not contain local absolute paths
+- [x] `python3 docs/build.py` passes
 - [x] third-party license notices complete
-- [ ] GitHub repo visibility changed to public
+- [x] GitHub repo visibility changed to public
+  (already public on GitHub; visibility was changed before libgen existed.
+  Future companions must follow the private-first workflow.)

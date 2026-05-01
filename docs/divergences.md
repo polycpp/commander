@@ -64,22 +64,36 @@
 
 ## Audit findings (libgen catch-up)
 
-These are findings from auditing the existing implementation against the
-libgen guidance documents (`companion-patterns.md`,
+Findings from auditing the existing implementation against the libgen
+guidance documents (`companion-patterns.md`,
 `cmake-dependency-patterns.md`, `docs-authoring-guideline.md`,
-`ecosystem-reuse.md`, `class-mapping.md`). They are recorded for triage,
-not fixed in this catch-up task.
+`ecosystem-reuse.md`, `class-mapping.md`).
 
-| Severity | File | Description | Recommended classification |
+### Resolved
+
+| Severity | File | Description | Resolution |
 |---|---|---|---|
-| medium | `CMakeLists.txt:41-68` | Test executable targets are named `test_<area>` rather than the libgen convention `polycpp_commander_test_<area>`. Risk: target collisions when `polycpp_commander` is consumed via `FetchContent` from another repo that also defines `test_command` or `test_option`. | bug-fix-needed |
-| medium | `CMakeLists.txt` | No `POLYCPP_SOURCE_DIR` override block. Local validation against an in-tree polycpp checkout (the CI pattern) requires editing the `FetchContent_Declare(polycpp ...)` block by hand. | bug-fix-needed |
-| medium | `CMakeLists.txt:31` | `option(POLYCPP_COMMANDER_BUILD_TESTS "Build tests" ON)` is unconditionally `ON`, including when consumed as a `FetchContent` subproject. Per `cmake-dependency-patterns.md` "Test wiring", default should be `ON` only when `CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR`. | bug-fix-needed |
-| low | `CMakeLists.txt:38-43` | The `googletest` `FetchContent_Declare` block omits `GIT_SHALLOW TRUE`. Increases clone size and CI time. | bug-fix-needed |
-| medium | `CMakeLists.txt` | `examples/greet.cpp` and `examples/todo.cpp` exist on disk but are not wired into CMake. The Sphinx pages (`docs/sphinx/examples/{greet,todo}.rst`) instruct users to run `./build/examples/greet` and `./build/examples/todo`, which will fail. Per `cmake-dependency-patterns.md`: "never let docs claim an example target exists unless CMake actually defines it." | bug-fix-needed |
-| medium | `CMakeLists.txt` | No `POLYCPP_COMMANDER_BUILD_EXAMPLES` option, so the standard "build examples behind an option" pattern is missing. | bug-fix-needed |
-| high | `docs/Doxyfile:43-44` | `WARN_IF_UNDOCUMENTED = NO` and `WARN_AS_ERROR = NO`. Per `docs-authoring-guideline.md` rule 12, both must be `YES`. The public-readiness gate (`scripts/check-public-readiness.py`) will reject a public release while these are `NO`. | bug-fix-needed (release blocker) |
-| low | `docs/sphinx/index.rst:51` | Index card claims "600+ assertions across arguments, options, error reporting, help layout, suggestions, and subcommand dispatch." Actual ctest count is 295. The number is informational and should match reality. | bug-fix-needed |
-| low | `docs/build.sh` | Retained alongside `docs/build.py`. Companions are migrating to `build.py` as the canonical entry point; keeping both invites drift. | bug-fix-needed |
-| low | `include/polycpp/commander/command.hpp:1010-1036` | `Command` has many public mutable fields (`commands`, `options`, `parent`, `registeredArguments`, `args`, `rawArgs`, `processedArgs`). Upstream JS exposes them as JS object properties for compatibility with downstream code. Direct mutation could leave Command in an inconsistent state. Documented for parity, but a future revision could move these behind getters. | behavior change (already accepted for upstream parity) |
-| low | `include/polycpp/commander/help.hpp` | `Help` exposes configuration as public mutable fields (`helpWidth`, `sortOptions`, etc.) rather than via a config struct. Consistent with upstream. | behavior change (already accepted for upstream parity) |
+| high | `docs/Doxyfile:43-44` | `WARN_IF_UNDOCUMENTED = NO`, `WARN_AS_ERROR = NO`. Per `docs-authoring-guideline.md` rule 12, both must be `YES`. Public-readiness gate blocker. | Set both to `YES`; added `DOXYGEN=1` to `PREDEFINED`. Docs build still passes. |
+| high | `include/polycpp/commander/detail/command.hpp:485-491` | `Command::parse()` (no-arg) was wired to `parse({}, {.from = "node"})` instead of `process::argv()`. The intent comment said "use process::argv()" but the implementation was a placeholder. Every README/quickstart example using `prog.parse()` would silently see an empty argv and report missing required args. | `parse()` now reads `process::argv()` and reshapes the native `[program, ...userArgs]` to Node-style `[runtime, script, ...userArgs]` so the existing "node" mode strips the right number of leading entries. Examples now run. |
+| medium | `CMakeLists.txt:41-68` | Test executable targets named `test_<area>` instead of `polycpp_commander_test_<area>`. Subproject collision risk. | Renamed via foreach loop; the seven test executables are now `polycpp_commander_test_{error,argument,option,suggest_similar,help,command,integration}`. |
+| medium | `CMakeLists.txt` | No `POLYCPP_SOURCE_DIR` override. | Added the standard libgen baseline block: local checkout via `POLYCPP_SOURCE_DIR`, fall back to GitHub master. |
+| medium | `CMakeLists.txt:31` | `POLYCPP_COMMANDER_BUILD_TESTS` defaulted ON unconditionally. | Default is now ON only when `CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR`. |
+| medium | `CMakeLists.txt` | Examples not wired into CMake; docs instructed running `./build/examples/{greet,todo}`. | Added `POLYCPP_COMMANDER_BUILD_EXAMPLES` option (same default-on-standalone semantics) plus a glob-driven loop that builds `examples/*.cpp` into `build/examples/<name>`. |
+| medium | `CMakeLists.txt` | No `POLYCPP_COMMANDER_BUILD_EXAMPLES`. | Added with the same default-on-standalone semantics as the test option. |
+| low | `CMakeLists.txt:38-43` | `googletest` fetch missed `GIT_SHALLOW TRUE`. | Added; also switched the fetch URL to `https://github.com/...` because SSH access fails in some CI/build environments. |
+| low | `docs/sphinx/index.rst:51` | Claimed "600+ assertions"; actual is 295. | Updated to "295 GoogleTest cases". |
+| low | `docs/build.sh` | Retained alongside `docs/build.py`. | Removed; `docs/build.py` is the only entry point. |
+| low | `examples/greet.cpp:35` | Used `opts["shout"].asBool()` without checking the option was set; threw `polycpp::TypeError` for a null value. | Now guards with `isBool()` first. |
+| low | `examples/todo.cpp:64` | Same pattern for `--verbose`. | Same fix. |
+| low | `examples/todo.cpp:58-62` | `--priority <n>` had no parser, so `opts["priority"].asInt()` threw because the CLI value was a string. | Added an `argParser` that converts the string to int via `std::stoi`. |
+| low | `examples/todo.cpp:85` | `args[0].asInt()` on a string-typed positional argument crashed. | Now uses `std::stoi(args[0].asString())`. |
+| low | `README.md` Usage example | Same pattern as greet: `opts["verbose"].asBool()` with no guard, would crash when `--verbose` was absent. | Updated the README example to use `isBool()` / `isString()` guards and provide a default value for `name`. |
+| low | `docs/sphinx/examples/index.rst:22-23` | Used `<example_name>` placeholder text that the public-readiness regex flags as a generated placeholder. | Replaced with a concrete example using `polycpp_commander_example_greet`. |
+| low | `docs/sphinx/tutorials/custom-help.rst:54` | The string ending the word "Environmen" with a colon followed by an escape character matched the libgen public-path scanner's Windows-drive regex (letter+colon+backslash). | Removed the colon from the help-text label. |
+
+### Remaining (intentional, parity-driven)
+
+| Severity | File | Description | Classification |
+|---|---|---|---|
+| low | `include/polycpp/commander/command.hpp:1010-1036` | `Command` has many public mutable fields (`commands`, `options`, `parent`, `registeredArguments`, `args`, `rawArgs`, `processedArgs`). Mirrors upstream's JS object property shape. Direct mutation could leave a `Command` in an inconsistent state. | behavior change (accepted for upstream parity) |
+| low | `include/polycpp/commander/help.hpp` | `Help` exposes configuration as public mutable fields (`helpWidth`, `sortOptions`, etc.) rather than via a config struct. Mirrors upstream. | behavior change (accepted for upstream parity) |

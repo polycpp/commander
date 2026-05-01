@@ -487,8 +487,13 @@ inline Command& Command::action(ActionFn fn) {
 // ---- Parsing ----
 
 inline Command& Command::parse() {
-    // Use empty vector to signal "use process::argv()"
-    return parse({}, {.from = "node"});
+    // polycpp::process::argv() returns native [program, ...userArgs]; reshape
+    // it to Node-style [runtime, script, ...userArgs] so the default "node"
+    // mode strips the right number of leading entries and scriptPath_ is
+    // populated from the real program path.
+    auto args = polycpp::process::argv();
+    args.insert(args.begin(), std::string{});
+    return parse(args, {.from = "node"});
 }
 
 inline Command& Command::parse(const std::vector<std::string>& argv, const ParseOptions& parseOpts) {
@@ -1031,9 +1036,6 @@ inline void Command::exit_(int exitCode, const std::string& code, const std::str
 inline std::vector<std::string> Command::prepareUserArgs_(const std::vector<std::string>& argv,
                                                            const ParseOptions& parseOpts) {
     std::vector<std::string> effectiveArgv = argv;
-
-    // If no argv provided, this would normally use process::argv()
-    // For now, empty means empty args
     rawArgs = effectiveArgv;
 
     std::vector<std::string> userArgs;

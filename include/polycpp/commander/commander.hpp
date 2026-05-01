@@ -80,3 +80,10 @@ Argument createArgument(const std::string& name, const std::string& description 
 
 } // namespace commander
 } // namespace polycpp
+
+// Pull in the inline implementations so that consumers including this
+// public umbrella header get a fully-linkable library, matching the
+// `polycpp/process.hpp`-style umbrella pattern used elsewhere in the
+// ecosystem. Internal implementation files live under `detail/` and are
+// not part of the public API surface.
+#include <polycpp/commander/detail/aggregator.hpp>

@@ -32,7 +32,8 @@ int main(int argc, char** argv) {
                               : (lang == "fr") ? "bonjour"
                                                : "hello";
             std::string msg = hello + ", " + args[0].asString();
-            if (opts["shout"].asBool())
+            const bool shout = opts["shout"].isBool() && opts["shout"].asBool();
+            if (shout)
                 for (auto& c : msg)
                     c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
             std::cout << msg << '\n';
