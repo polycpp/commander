@@ -59,8 +59,6 @@
 | `Command#exitOverride(fn?)` | `Command::exitOverride(fn?)` | direct | |
 | `Command#hook(event, listener)` | `Command::hook(event, HookFn)` | direct | event ∈ {"preSubcommand","preAction","postAction"}. |
 | `Command#hook(event, asyncListener)` | `Command::hookAsync(event, AsyncHookFn)` | adapted | Split from sync overload. |
-| `prog.on("command:<name>", cb)` | `Command::onCommand(name, CommandEventFn)` | adapted | Polycpp's `events::EventEmitter` only accepts compile-time `TypedEvent` names; the legacy command-event hook becomes a typed C++ method. Same dispatch semantics: fires on the parent after the named subcommand's action runs (or as the action substitute when the parent listens but the subcommand has no `.action()`). |
-| `prog.on("command:*", cb)` | `Command::onAnyCommand(CommandEventFn)` | adapted | Catch-all for unknown subcommands; suppresses the default `unknownCommand()` error path while a listener is installed. |
 | `Command#copyInheritedSettings(src)` | `Command::copyInheritedSettings(src)` | direct | |
 | `Command#allowUnknownOption(bool)` | `Command::allowUnknownOption(bool)` | direct | |
 | `Command#allowExcessArguments(bool)` | `Command::allowExcessArguments(bool)` | direct | |

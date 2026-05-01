@@ -98,10 +98,6 @@ struct Command::Impl {
     std::unordered_map<std::string,
                        std::vector<std::function<void(const std::optional<std::string>&)>>>
         internalEventHandlers_;
-    /// Listeners for upstream's legacy `command:<name>` / `command:*` events.
-    /// Keyed by subcommand name (the part after `command:`); the special key
-    /// `"*"` is the catch-all for unknown subcommands.
-    std::unordered_map<std::string, std::vector<CommandEventFn>> commandEventHandlers_;
     std::unordered_map<std::string, std::vector<std::string>> helpText_;
 
     OutputConfiguration outputConfiguration_;

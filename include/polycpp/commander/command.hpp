@@ -115,16 +115,6 @@ using AsyncActionFn = std::function<polycpp::Promise<void>(
 /// @since 0.2.0
 using AsyncHookFn = std::function<polycpp::Promise<void>(Command& thisCommand, Command& actionCommand)>;
 
-/// @brief Type alias for legacy `command:<name>` / `command:*` event listeners.
-///
-/// Receives the operands and unknown-arguments vectors from the parser at
-/// the moment the corresponding subcommand was dispatched (or, for the
-/// catch-all `command:*`, when no subcommand matched).
-///
-/// @since 0.2.0
-using CommandEventFn = std::function<void(const std::vector<std::string>& operands,
-                                           const std::vector<std::string>& unknown)>;
-
 /**
  * @brief The main Command class — CLI command with options, arguments, and subcommands.
  *
@@ -990,52 +980,6 @@ public:
      */
     Command& hookAsync(const std::string& event, AsyncHookFn listener);
 
-    // --- Legacy command:<name> / command:* event listeners ---
-
-    /**
-     * @brief Register a listener for the legacy `command:<name>` event.
-     *
-     * Mirrors upstream commander.js's `prog.on("command:<name>", cb)`
-     * pattern. The listener fires after the named subcommand has dispatched
-     * (and after its action handler has run, if any). It is the legacy
-     * alternative to attaching a `.action(...)` to that subcommand.
-     *
-     * @param subcommandName Name of the subcommand to listen for (without the `command:` prefix).
-     * @param listener Callback receiving the dispatched operands and unknown args.
-     * @return Reference to this command for chaining.
-     * @par Example
-     * @code{.cpp}
-     *   prog.command("clone <repo>");
-     *   prog.onCommand("clone", [](const auto& operands, const auto&) {
-     *       std::cout << "cloning " << operands[0] << '\n';
-     *   });
-     * @endcode
-     * @see https://github.com/tj/commander.js
-     * @since 0.2.0
-     */
-    Command& onCommand(const std::string& subcommandName, CommandEventFn listener);
-
-    /**
-     * @brief Register a listener for the legacy `command:*` catch-all event.
-     *
-     * Mirrors upstream commander.js's `prog.on("command:*", cb)`. Fires when
-     * argv contains operands but no declared subcommand matches; takes the
-     * place of the `unknownCommand()` error path. Does NOT fire when a
-     * `command("*")` subcommand is registered (that wins first).
-     *
-     * @param listener Callback receiving the unmatched operands and unknown args.
-     * @return Reference to this command for chaining.
-     * @par Example
-     * @code{.cpp}
-     *   prog.onAnyCommand([](const auto& operands, const auto&) {
-     *       std::cerr << "no such command: " << operands[0] << '\n';
-     *   });
-     * @endcode
-     * @see https://github.com/tj/commander.js
-     * @since 0.2.0
-     */
-    Command& onAnyCommand(CommandEventFn listener);
-
     // --- Settings ---
 
     /**
@@ -1270,12 +1214,6 @@ private:
                           std::function<void(const std::optional<std::string>&)> listener);
     void emitInternalEvent_(const std::string& eventName,
                             std::optional<std::string> value = std::nullopt);
-    /// Fire `command:<key>` listeners stored on this Impl. Returns true if
-    /// at least one listener was registered (mirrors upstream's `emit`
-    /// truthiness for the "had-listener" branch in the dispatcher).
-    bool emitCommandEvent_(const std::string& key,
-                           const std::vector<std::string>& operands,
-                           const std::vector<std::string>& unknown);
     std::string renderHelpText_(const std::string& position) const;
 
     // Help reads `impl_` directly via this friendship.

@@ -45,19 +45,16 @@
   for subclass customization.
 - **Node-specific globals** (`global`, `globalThis`, `require.main`) are
   not exposed.
-- **Legacy `command:<name>` and `command:*` event listeners** use a
-  commander-local API rather than upstream's `prog.on("command:foo", cb)`
-  shape because `polycpp::events::EventEmitter` only accepts compile-time
-  `TypedEvent<Name, Args...>` names, not runtime strings. The C++ port
-  exposes `Command::onCommand(name, listener)` and
-  `Command::onAnyCommand(listener)` with the same dispatch semantics as
-  upstream: `command:<name>` fires on the parent after the named
-  subcommand's action runs (or in place of an action when the parent has
-  a listener for it but the subcommand has no `.action()`); `command:*`
-  fires when argv contains operands but no declared subcommand matches,
-  and suppresses the `unknownCommand()` error path while a listener is
-  installed. Both sync and async dispatch (`parse`/`parseAsync`) emit on
-  the same paths.
+- **Legacy `command:<name>` and `command:*` event listeners are not
+  exposed.** Upstream commander.js inherited these from its
+  `events.EventEmitter` base; new code is encouraged to use
+  `.action(...)` and `.hook(...)` instead. This C++ port is new code in
+  the polycpp companion ecosystem with no legacy callers to preserve, so
+  the typed `Command::action()` / `Command::actionAsync()` / typed
+  `Command::hook("preSubcommand"|"preAction"|"postAction", ...)` surface
+  is the only way to observe subcommand dispatch. The internal-only
+  `option:<flag>` / `optionEnv:<flag>` event names continue to be used
+  for option parsing dispatch but are not part of the public API.
 
 ## Audit findings (libgen catch-up)
 
