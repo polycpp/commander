@@ -7,6 +7,9 @@ cmake-build-*/
 # Working documents (never committed)
 /internal/
 
+# libgen intake artifacts (upstream clones, npm package extract, analyzer json)
+.tmp/
+
 # IDE files
 .vscode/
 .idea/

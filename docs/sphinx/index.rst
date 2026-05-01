@@ -40,8 +40,10 @@ Define options, arguments, subcommands, action handlers, and lifecycle hooks wit
    .. grid-item-card:: C++20 native
       :margin: 1
 
-      Header-only where possible, zero-overhead abstractions, ``constexpr``
-      and ``std::string_view`` throughout.
+      Header-only declarations with inline implementations, builds on
+      ``polycpp::events::EventEmitter``, ``polycpp::JsonValue``, and
+      ``polycpp::Promise`` so it composes naturally with the rest of the
+      polycpp ecosystem.
 
    .. grid-item-card:: Tested
       :margin: 1
