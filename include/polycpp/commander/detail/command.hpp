@@ -16,6 +16,7 @@
 #include <polycpp/process.hpp>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cstdlib>
 #include <iostream>
@@ -46,20 +47,25 @@ namespace detail_exec {
  * `child.kill(signal)`.
  *
  * Implementation notes:
- * - `polycpp::process::on(name, ...)` returns void (no per-listener token),
- *   so we use a shared atomic flag to deactivate the lambda when the
- *   forwarder goes out of scope. We deliberately do NOT call
- *   `process::removeAllListeners()` because that would clobber any
- *   user-installed handlers for the same signal.
+ * - As of polycpp commit `bbf2f0c1` (plan 1273), `process::on(SIG, ...)`
+ *   automatically wires the signal-pipe read end into the EventContext and
+ *   drains pending signals from the loop tick. As a side effect, having
+ *   ANY listener registered for a signal pins the EventContext alive (the
+ *   signal-pipe descriptor stays in `async_wait`). To keep
+ *   `EventLoop::run()` returning naturally after parse() finishes — both
+ *   for the sync path and the parseAsync nested-run case — the
+ *   forwarder removes its listeners on destruction.
+ * - Since `polycpp::process::on(...)` does not return a per-listener token
+ *   yet, the only available removal API is
+ *   `polycpp::process::removeAllListeners(name)`. That call clobbers any
+ *   user-installed handler for the same signal as a side effect — see
+ *   `docs/divergences.md` for the documented limitation. The
+ *   `active_` shared atomic is retained as a defensive no-op so that
+ *   handler entries already in flight (sigaction was raised but the
+ *   drain has not yet run) skip the kill once `deactivate()` is called.
  * - The lambda captures the `ChildProcess` handle (a thin shared-ptr handle,
  *   cheap to copy) and the `active_` flag by value so the listener remains
- *   safe even after the forwarder is destroyed.
- * - polycpp's `process::on(SIG, ...)` queues signals into `SignalRegistry`
- *   but does not auto-pump them from the EventLoop. We install a short-lived
- *   `setInterval(drainPendingSignals, 25ms)` for the lifetime of the spawn
- *   so the forwarder lambdas actually fire while the EventLoop is blocked
- *   inside `run()` waiting for the child's exit event. The pump is torn
- *   down via `clearInterval` in the destructor.
+ *   safe even before removal completes.
  *
  * @since 0.1.0
  */
@@ -72,10 +78,7 @@ struct SignalForwarder {
         : child_(std::move(child)),
           active_(std::make_shared<std::atomic<bool>>(true)) {
         // Names match upstream commander.js exactly. Order is not significant.
-        static constexpr const char* kForwarded[] = {
-            "SIGUSR1", "SIGUSR2", "SIGTERM", "SIGINT", "SIGHUP",
-        };
-        for (const char* sig : kForwarded) {
+        for (const char* sig : kForwarded()) {
             auto active = active_;
             auto child  = child_;
             polycpp::process::on(sig, [active, child](int signum) mutable {
@@ -84,20 +87,17 @@ struct SignalForwarder {
                 try { child.kill(signum); } catch (...) {}
             });
         }
-        // Pump pending signals from the EventLoop. polycpp does not auto-drain
-        // the SignalRegistry from `EventLoop::run()` (it relies on the user
-        // calling `drainPendingSignals` or scheduling one — see the polycpp
-        // examples under examples/docs/tutorials/process_signals.cpp). We use
-        // a 25 ms tick: small enough to feel instant, large enough to stay
-        // out of the event-loop hot path.
-        pumpHandle_ = polycpp::setInterval(
-            []() { polycpp::process::drainPendingSignals(); },
-            static_cast<int64_t>(25));
     }
 
     ~SignalForwarder() {
-        polycpp::clearInterval(pumpHandle_);
         deactivate();
+        // Remove our listeners so polycpp's signal-pipe descriptor stops
+        // pinning the EventContext alive once the spawn is over. Documented
+        // to clobber user-installed handlers for the same signals while a
+        // stand-alone executable subcommand is running.
+        for (const char* sig : kForwarded()) {
+            polycpp::process::removeAllListeners(sig);
+        }
     }
 
     SignalForwarder(const SignalForwarder&) = delete;
@@ -106,17 +106,24 @@ struct SignalForwarder {
     SignalForwarder& operator=(SignalForwarder&&) = delete;
 
     /**
-     * @brief Stop forwarding without removing the underlying listeners.
-     *        Idempotent and safe to call from any thread.
+     * @brief Stop forwarding immediately. Idempotent. Safe from any thread.
+     *        The underlying listeners are removed by the destructor.
      */
     void deactivate() noexcept {
         if (active_) active_->store(false);
     }
 
 private:
+    /// Signal names commander forwards. Single source of truth for ctor + dtor.
+    static const std::array<const char*, 5>& kForwarded() {
+        static const std::array<const char*, 5> kNames = {{
+            "SIGUSR1", "SIGUSR2", "SIGTERM", "SIGINT", "SIGHUP",
+        }};
+        return kNames;
+    }
+
     polycpp::child_process::ChildProcess child_;
     std::shared_ptr<std::atomic<bool>> active_;
-    polycpp::timers::Timeout pumpHandle_;
 };
 
 } // namespace detail_exec

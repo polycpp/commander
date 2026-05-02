@@ -34,6 +34,21 @@
   executable form is its own named method.
 - **`Error.captureStackTrace` is not preserved.** It is a Node-only
   observability hook with no C++ equivalent.
+- **User-installed signal handlers for SIGUSR1 / SIGUSR2 / SIGTERM /
+  SIGINT / SIGHUP are temporarily cleared while a stand-alone executable
+  subcommand is running.** The `executeSubCommand_` dispatch path
+  installs forwarders for those five signals via
+  `polycpp::process::on(...)` so they reach the spawned child via
+  `ChildProcess::kill(signum)`. polycpp does not yet expose a
+  per-listener removal API; the only available teardown is
+  `polycpp::process::removeAllListeners(name)`, which removes both
+  commander's forwarders and any handlers the host application
+  installed beforehand. This is necessary so polycpp's signal-pipe
+  EventContext watcher (plan 1273) stops pinning the loop alive once
+  the spawn finishes — without removal, `EventLoop::run()` after a
+  parse would never return naturally. When polycpp adds per-listener
+  removal, this clobber will be lifted and pre-existing user handlers
+  will survive the spawn unchanged.
 
 ## Unsupported Runtime-Specific Features
 
