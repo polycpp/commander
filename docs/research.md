@@ -419,6 +419,41 @@ All of the following are in scope for v0 and implemented:
 - `program.on('command:*', ...)` JavaScript-only event aliases that have no
   C++ equivalent. Replaced by typed event names on the EventEmitter base.
 
+## Non-parity extension candidates
+
+Ideas that go beyond commander.js parity. Not in scope for v0; recorded
+as proposals only so future contributors don't have to re-derive them.
+
+- **Compile-time-typed option/argument values.** Today every option and
+  positional argument is exchanged as `polycpp::JsonValue`. A C++-native
+  CLI parser could expose `prog.option<int>("-p, --port <n>")` returning
+  a typed accessor (`opts.get<int>("port")` or `opts.port`), eliminating
+  the runtime `isInt()` / `asInt()` dance shown in `examples/todo.cpp`.
+  Would coexist with the JsonValue surface (stay opt-in) so commander.js
+  parity remains intact.
+- **`std::expected<T, CommanderError>`-returning parse overloads.** As an
+  alternative to `exitOverride()` + try/catch, a `parseChecked(...)`
+  overload that returns `std::expected<std::reference_wrapper<Command>,
+  CommanderError>` would be more idiomatic for C++23 callers wanting
+  total error-as-value handling without exceptions.
+- **Coroutine-based async actions.** `co_await prog.parseAsync(...)`
+  would land naturally on top of the existing
+  `polycpp::Promise<>`-returning surface; the polycpp Promise type
+  already integrates with `std::coroutine` machinery in other companion
+  libraries.
+- **Shell-completion script generation.** Upstream commander.js has a
+  third-party `@commander-js/extra-typings` ecosystem that generates
+  bash/zsh/fish completion scripts from the registered options and
+  subcommands. A `prog.generateCompletion("bash")` method, returning the
+  shell script as a string, would be a small add-on that consumes
+  metadata commander already tracks internally.
+- **Subcommand grouping in help output.** `prog.commandGroup("Network",
+  ...)` would let users render `--help` with grouped subcommand
+  sections, useful for CLIs with many subcommands. Upstream has no such
+  concept.
+
+These are recorded for triage only; none are committed to.
+
 ## v0 scope
 
 - port version: 0.1.0

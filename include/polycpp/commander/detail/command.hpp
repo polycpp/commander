@@ -47,22 +47,23 @@ namespace detail_exec {
  * `child.kill(signal)`.
  *
  * Implementation notes:
- * - As of polycpp commit `bbf2f0c1` (plan 1273), `process::on(SIG, ...)`
- *   automatically wires the signal-pipe read end into the EventContext and
- *   drains pending signals from the loop tick. As a side effect, having
- *   ANY listener registered for a signal pins the EventContext alive (the
- *   signal-pipe descriptor stays in `async_wait`). To keep
- *   `EventLoop::run()` returning naturally after parse() finishes — both
- *   for the sync path and the parseAsync nested-run case — the
- *   forwarder removes its listeners on destruction.
- * - Since `polycpp::process::on(...)` does not return a per-listener token
- *   yet, the only available removal API is
- *   `polycpp::process::removeAllListeners(name)`. That call clobbers any
- *   user-installed handler for the same signal as a side effect — see
- *   `docs/divergences.md` for the documented limitation. The
- *   `active_` shared atomic is retained as a defensive no-op so that
- *   handler entries already in flight (sigaction was raised but the
- *   drain has not yet run) skip the kill once `deactivate()` is called.
+ * - polycpp's `process::on(SIG, ...)` (since plan 1273, commit `bbf2f0c1`)
+ *   automatically wires the signal-pipe read end into the EventContext so
+ *   queued signals dispatch from the loop tick.
+ * - polycpp's `process::on(SIG, ...)` returns a `SignalListenerId` (since
+ *   plan 1274, commit `8561254f`), so the forwarder can call
+ *   `process::off(name, id)` to remove only its own listeners on
+ *   destruction. Any user-installed handlers on those signals survive the
+ *   spawn unchanged.
+ * - The destructor must remove the listeners (not just deactivate via the
+ *   `active_` flag): polycpp's auto-drain integration keeps the
+ *   signal-pipe descriptor in `async_wait` while any listener is
+ *   registered, which would otherwise prevent `EventLoop::run()` from
+ *   returning naturally after parse() finishes — both for the sync path
+ *   and the parseAsync nested-run case.
+ * - The `active_` shared atomic is retained as a defensive no-op so that
+ *   handler entries already in flight (sigaction was raised but the drain
+ *   has not yet run) skip the kill once `deactivate()` is called.
  * - The lambda captures the `ChildProcess` handle (a thin shared-ptr handle,
  *   cheap to copy) and the `active_` flag by value so the listener remains
  *   safe even before removal completes.
@@ -77,26 +78,29 @@ struct SignalForwarder {
     explicit SignalForwarder(polycpp::child_process::ChildProcess child)
         : child_(std::move(child)),
           active_(std::make_shared<std::atomic<bool>>(true)) {
-        // Names match upstream commander.js exactly. Order is not significant.
-        for (const char* sig : kForwarded()) {
+        // Names match upstream commander.js exactly. Order is not significant
+        // beyond the kForwarded() / installed_ index correspondence below.
+        const auto& names = kForwarded();
+        for (std::size_t i = 0; i < names.size(); ++i) {
             auto active = active_;
             auto child  = child_;
-            polycpp::process::on(sig, [active, child](int signum) mutable {
-                if (!active->load()) return; // no-op after deactivate()
-                // Best-effort forward; ignore errors (child may already be gone).
-                try { child.kill(signum); } catch (...) {}
-            });
+            installed_[i] = polycpp::process::on(
+                names[i], [active, child](int signum) mutable {
+                    if (!active->load()) return; // no-op after deactivate()
+                    // Best-effort forward; ignore errors (child may already be gone).
+                    try { child.kill(signum); } catch (...) {}
+                });
         }
     }
 
     ~SignalForwarder() {
         deactivate();
-        // Remove our listeners so polycpp's signal-pipe descriptor stops
-        // pinning the EventContext alive once the spawn is over. Documented
-        // to clobber user-installed handlers for the same signals while a
-        // stand-alone executable subcommand is running.
-        for (const char* sig : kForwarded()) {
-            polycpp::process::removeAllListeners(sig);
+        // Remove only our own listeners; user-installed handlers on the same
+        // signals are unaffected. Required so polycpp's signal-pipe descriptor
+        // stops pinning the EventContext alive once the spawn is over.
+        const auto& names = kForwarded();
+        for (std::size_t i = 0; i < names.size(); ++i) {
+            polycpp::process::off(names[i], installed_[i]);
         }
     }
 
@@ -124,6 +128,9 @@ private:
 
     polycpp::child_process::ChildProcess child_;
     std::shared_ptr<std::atomic<bool>> active_;
+    /// Listener tokens returned by `polycpp::process::on(...)`. Indexed by
+    /// `kForwarded()` position so the destructor can remove them.
+    std::array<polycpp::process::SignalListenerId, 5> installed_{};
 };
 
 } // namespace detail_exec

@@ -1058,19 +1058,19 @@ TEST(ExecutableSubcommand, MultipleSpawnsEachInstallTheirOwnForwarder) {
 
 // ──────────────────────────────────────────────────────────────────────
 // User-installed signal handler must coexist with the dispatch-path
-// forwarder. Validates the no-clobber design (we use a per-spawn active
-// flag instead of process::removeAllListeners(name)).
+// forwarder. Validates the no-clobber design enabled by polycpp's
+// process::off(name, id) per-listener removal (commit 8561254f).
 // ──────────────────────────────────────────────────────────────────────
 
-TEST(ExecutableSubcommand, SignalForwardingClobbersUserHandlerForDuration) {
-    // Documents the *intentional* limitation: while a stand-alone executable
-    // subcommand is dispatching, commander temporarily owns SIGUSR1/USR2/TERM/
-    // INT/HUP. Pre-installed user handlers are removed when the spawn ends
-    // (see SignalForwarder destructor). polycpp does not yet expose a
-    // per-listener removal API; the day it does, this clobber will go away
-    // and a no-clobber test will replace this one.
+TEST(ExecutableSubcommand, SignalForwardingPreservesUserHandler) {
+    // Install user handler BEFORE the dispatch path adds its forwarder.
     std::atomic<int> userFires{0};
-    polycpp::process::on("SIGUSR1", [&](int) { userFires.fetch_add(1); });
+    auto userId = polycpp::process::on("SIGUSR1",
+                                       [&](int) { userFires.fetch_add(1); });
+    struct ListenerCleanup {
+        polycpp::process::SignalListenerId id;
+        ~ListenerCleanup() { polycpp::process::off("SIGUSR1", id); }
+    } listenerCleanup{userId};
 
     Sandbox sb;
     sb.installFixture("signal_writer", "userprog-go");
@@ -1106,13 +1106,16 @@ TEST(ExecutableSubcommand, SignalForwardingClobbersUserHandlerForDuration) {
     ASSERT_TRUE(err.has_value());
     EXPECT_EQ(err->exitCode, 128 + SIGUSR1);
 
-    // The user handler may or may not have fired during the spawn (it was
-    // removed at SignalForwarder dtor; whether it fired depends on whether
-    // polycpp already drained the queue before our removeAllListeners ran).
-    // Either way, the listener is gone after parse() returns:
-    EXPECT_EQ(polycpp::process::listenerCount("SIGUSR1"), 0u)
-        << "commander should remove signal listeners (its own AND any "
-           "user-installed ones) when the spawn finishes";
+    // The user handler fired alongside the forwarder.
+    polycpp::process::drainPendingSignals();
+    EXPECT_GE(userFires.load(), 1)
+        << "user-installed SIGUSR1 handler must fire alongside the forwarder";
+
+    // The user handler is still installed; only commander's own forwarder
+    // listener was removed at SignalForwarder dtor.
+    EXPECT_EQ(polycpp::process::listenerCount("SIGUSR1"), 1u)
+        << "commander must remove only its own forwarder, not the user's "
+           "pre-installed handler";
 }
 
 // ──────────────────────────────────────────────────────────────────────
