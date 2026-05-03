@@ -18,7 +18,7 @@ Legend:
 - [x] GitHub repo created under `polycpp`
 - [x] GitHub repo visibility verified private
 - GitHub repo URL: https://github.com/polycpp/commander
-- GitHub repo private: yes
+- GitHub repo private: no
 - libgen catch-up note: this repo predates libgen. It was originally
   created as public on GitHub before libgen's private-first workflow
   existed. Returned to private as part of the libgen catch-up so the
@@ -149,4 +149,4 @@ a release candidate is ready (the public-readiness gate already passes).
 - [x] public docs do not contain local absolute paths
 - [x] `python3 docs/build.py` passes
 - [x] third-party license notices complete
-- [ ] GitHub repo visibility changed to public
+- [x] GitHub repo visibility changed to public
