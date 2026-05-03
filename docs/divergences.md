@@ -2,13 +2,10 @@
 
 ## Deferred Features
 
-- **Windows-specific stand-alone executable lookup.** Upstream resolves
-  `<prog>-<sub>` against `.cmd` and `.bat` shims, and rewrites
-  `node --inspect` flags to allocate distinct ports for parent and child.
-  The C++ port currently performs POSIX-style search only. Re-enable when a
-  Windows tester is available; the search loop in
-  `Command::executeSubCommand_` is the only place that needs to grow the
-  Windows extension list.
+- **Node inspector argv rewriting.** Upstream rewrites `node --inspect`
+  flags to allocate distinct ports for parent and child executable
+  subcommands. This is Node-runtime specific and is not implemented in the
+  C++ port.
 - **Electron auto-detection of `argv[0]`.** Upstream inspects
   `process.defaultApp` to decide whether to skip the first element of
   `argv`. The port replaces this with an explicit
@@ -98,6 +95,7 @@ Changes" or "Audit findings ▸ Remaining" and have since been closed.
 
 | Severity | File | Description | Resolution |
 |---|---|---|---|
+| medium | `include/polycpp/commander/detail/command.hpp` | **Windows stand-alone executable lookup was POSIX-only.** Executable subcommands did not search `.exe`, `.cmd`, or `.bat` shims, did not respect semicolon-delimited `PATH`, treated backslashes as ordinary characters, and attempted POSIX signal listener registration on Windows. | Added native path helpers for executable subcommand lookup, Windows `PATHEXT` candidate expansion, `.cmd`/`.bat` dispatch through `COMSPEC`/`cmd.exe /d /s /c`, Windows-aware `PATH` splitting, and tolerant signal-forwarder registration. The executable fixture tests now cover `.exe` lookup, `.cmd` shim lookup, and semicolon PATH search on Windows/MSVC; POSIX signal-forwarding coverage remains POSIX-only. |
 | medium | `include/polycpp/commander/command.hpp` | **`Command` was non-copyable, owned by `unique_ptr`.** Subcommands were stored as `std::vector<std::unique_ptr<Command>>` because `polycpp::events::EventEmitter` was non-copyable. The user-visible API still chained but app-owned roots required `prog->...` arrow syntax. | Refactored `Command` to the polycpp Handle/Impl pattern (the same shape as `worker_threads::Worker` and `MessagePort`): the public `Command` is a thin handle holding `std::shared_ptr<Command::Impl>`, inheriting from `polycpp::events::EventEmitterForwarder`. Subcommands are now stored as `std::deque<Command>` (handles, not `unique_ptr`). The handle is copyable and movable; copies share state with the original. |
 | medium | `include/polycpp/commander/commander.hpp` | **`createCommand` returned `std::unique_ptr<Command>`.** Forced `prog->parse()` on app-owned root commands. | Returns `Command` by value. `prog.parse()` now chains directly. `addCommand` and `addHelpCommand` now take `Command` by value (sink). |
 | low | `include/polycpp/commander/command.hpp` | **`Command` exposed many public mutable fields (`commands`, `options`, `parent`, `registeredArguments`, `args`, `rawArgs`, `processedArgs`).** Direct mutation could leave a command in an inconsistent state. | Replaced with const-getter member functions of the same name (`commands()`, `options()`, …). Internal state lives on `Command::Impl` and is mutated only through Command's setter API. Tests and Help internals were updated accordingly. |

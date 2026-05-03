@@ -4,8 +4,10 @@
 
 #include <filesystem>
 #include <fstream>
+#if !defined(_WIN32)
 #include <sys/stat.h>
 #include <unistd.h>
+#endif
 
 using namespace polycpp::commander;
 
@@ -909,6 +911,8 @@ TEST(CommandTest, ExecutableSubcommandNotFound) {
     );
 }
 
+#if !defined(_WIN32)
+
 TEST(CommandTest, ExecutableSubcommandRun) {
     std::string marker = "/tmp/commander-exec-test-" + std::to_string(getpid());
     std::string script = "/tmp/myapp-runcmd";
@@ -953,6 +957,8 @@ TEST(CommandTest, ExecutableSubcommandPassesArgs) {
     std::filesystem::remove(script);
 }
 
+#endif
+
 TEST(CommandTest, ExecutableSubcommandInHelp) {
     Command cmd("myapp");
     cmd.exitOverride();
@@ -961,6 +967,8 @@ TEST(CommandTest, ExecutableSubcommandInHelp) {
     EXPECT_TRUE(help.find("install") != std::string::npos);
     EXPECT_TRUE(help.find("install packages") != std::string::npos);
 }
+
+#if !defined(_WIN32)
 
 TEST(CommandTest, ExecutableSubcommandCustomExecutable) {
     std::string marker = "/tmp/commander-custom-exec-test-" + std::to_string(getpid());
@@ -1004,6 +1012,8 @@ TEST(CommandTest, ExecutableSubcommandExitCode) {
 
     std::filesystem::remove(script);
 }
+
+#endif
 
 TEST(CommandTest, ExecutableSubcommandWithArguments) {
     Command cmd("myapp");

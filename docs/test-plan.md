@@ -83,15 +83,18 @@ upstream cluster into the matching `tests/test_<area>.cpp`:
     `tests/command.executableSubcommand.search.test.js`,
     `tests/command.executableSubcommand.mock.test.js`,
     `tests/command.executableSubcommand.signals.test.js` →
-    `tests/test_executable.cpp` (32 cases). The new target compiles
-    three stand-alone fixture programs (`tests/fixtures/echo_argv.cpp`,
-    `tests/fixtures/exit_with_code.cpp`, `tests/fixtures/signal_writer.cpp`)
-    into `${CMAKE_BINARY_DIR}/test_fixtures/` and exercises real
-    `child_process::spawn` calls. Covered scenarios: default
+    `tests/test_executable.cpp`. The executable test target compiles
+    `echo_argv` and `exit_with_code` on every platform, and adds
+    `signal_writer` on POSIX platforms where signal forwarding is
+    available. Fixtures are located via CMake target file paths rather
+    than hard-coded binary-directory names, so the same tests work with
+    single-config and multi-config generators. Covered scenarios: default
     `<prog>-<sub>` name resolution; explicit `executableFile` (relative,
     absolute, and `./bin/...` path-containing forms); `executableDir`
     precedence over `PATH`; `executableDir` joined relative to
-    `scriptPath` (node-mode parse); fall-back PATH search;
+    `scriptPath` (node-mode parse); fall-back PATH search; Windows `.exe`
+    candidate expansion; Windows `.cmd`/`.bat` shim lookup through
+    `COMSPEC`/`cmd.exe`; semicolon-delimited Windows `PATH` search;
     missing-executable `commander.executeSubCommandAsync` error;
     operands and unknown args forwarded to child in the documented
     order; `--` separator behaviour; non-zero/zero child exit
@@ -101,7 +104,8 @@ upstream cluster into the matching `tests/test_<area>.cpp`:
     + conflicting option checks firing **before** spawn;
     `addCommand(...)` of an executable-flagged sub still routing to the
     spawn path; `parseAsync()` reaching the same dispatch path; help
-    output listing executable subcommands; signal forwarding for
+    output listing executable subcommands; Windows `.cmd` shim dispatch
+    through `COMSPEC`/`cmd.exe`; POSIX-only signal forwarding for
     SIGTERM, SIGINT, SIGHUP, SIGUSR1, and SIGUSR2 (parent → child via
     `ChildProcess::kill(signum)`); forwarder is inactive after the
     child exits; multiple sequential spawns each install their own
@@ -143,8 +147,9 @@ upstream cluster into the matching `tests/test_<area>.cpp`:
   (covered in `tests/test_command.cpp`).
 - suggestion output does not echo arbitrary user input back without
   sanitization (covered in `tests/test_suggest_similar.cpp`).
-- `executableDir` lookup precedence and `findProgram_` path search is
-  bounded by `accessSync(..., kX_OK)` (covered in
+- `executableDir` lookup precedence and executable-subcommand path search
+  are bounded to regular files, with POSIX executable-bit checks and
+  Windows extension/PATHEXT candidate checks (covered in
   `tests/test_executable.cpp`).
 
 ## Protocol/client tests
@@ -168,15 +173,29 @@ upstream cluster into the matching `tests/test_<area>.cpp`:
 
 ## Current validation
 
-- build commands:
+- POSIX build commands:
   - `cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug`
   - `cmake --build build -j$(nproc)`
-- test command:
+- POSIX test command:
   - `cd build && ctest --output-on-failure`
-- environment:
+- POSIX environment:
   - GCC 13.x or Clang 16+, CMake 3.20+, Ninja
   - `polycpp` master pulled via FetchContent (CMake `FetchContent_Declare`
     targets `git@github.com:enricohuang/polycpp.git`)
   - GoogleTest v1.15.2 pulled via FetchContent
+- Windows/MSVC build commands:
+  - `$polycpp = (Resolve-Path ..\polycpp).Path`
+  - `cmake -S . -B build-win -DPOLYCPP_SOURCE_DIR="$polycpp" -DPOLYCPP_SSL_BACKEND=boringssl -DOPENSSL_NO_ASM=ON`
+  - `cmake --build build-win --config Debug --parallel`
+- Windows/MSVC test command:
+  - `ctest --test-dir build-win -C Debug --output-on-failure`
+- Windows/MSVC environment:
+  - Visual Studio Community 2022 detected by `vswhere` with MSVC
+    19.44.35211, CMake 3.31.11, Visual Studio multi-config generator
+  - local `polycpp` checkout supplied with `POLYCPP_SOURCE_DIR`
+  - BoringSSL selected because OpenSSL was not installed; `OPENSSL_NO_ASM`
+    was required on this host to avoid a missing generated assembly object
+    during the BoringSSL build
+  - 324/324 CTest-discovered tests passed on Windows/MSVC
 - last validated against polycpp HEAD `4ed62f96…` (2026-05-01); see
   `docs/research.md` for the full snapshot.

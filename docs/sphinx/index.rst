@@ -48,7 +48,7 @@ Define options, arguments, subcommands, action handlers, and lifecycle hooks wit
    .. grid-item-card:: Tested
       :margin: 1
 
-      Ported from commander.js's own test suite — 295 GoogleTest cases across arguments, options, error reporting, help layout, suggestions, and subcommand dispatch.
+      Ported from commander.js's own test suite, with GoogleTest coverage across arguments, options, error reporting, help layout, suggestions, executable subcommands, and Windows/MSVC lookup behavior.
 
    .. grid-item-card:: Plays well with polycpp
       :margin: 1

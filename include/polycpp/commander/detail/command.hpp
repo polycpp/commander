@@ -13,11 +13,13 @@
 
 #include <polycpp/commander/command.hpp>
 #include <polycpp/commander/suggest_similar.hpp>
+#include <polycpp/platform/console.hpp>
 #include <polycpp/process.hpp>
 
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cctype>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
@@ -37,6 +39,153 @@ namespace polycpp {
 namespace commander {
 
 namespace detail_exec {
+
+inline bool isPathSeparator(char c) noexcept {
+#if defined(_WIN32)
+    return c == '/' || c == '\\';
+#else
+    return c == '/';
+#endif
+}
+
+inline bool containsPathSeparator(const std::string& s) noexcept {
+    return std::any_of(s.begin(), s.end(), isPathSeparator);
+}
+
+inline std::string dirname(const std::string& path) {
+#if defined(_WIN32)
+    return polycpp::path::win32::dirname(path);
+#else
+    return polycpp::path::dirname(path);
+#endif
+}
+
+inline std::string extname(const std::string& path) {
+#if defined(_WIN32)
+    return polycpp::path::win32::extname(path);
+#else
+    return polycpp::path::extname(path);
+#endif
+}
+
+inline bool isAbsolute(const std::string& path) noexcept {
+#if defined(_WIN32)
+    return polycpp::path::win32::isAbsolute(path);
+#else
+    return polycpp::path::isAbsolute(path);
+#endif
+}
+
+inline std::string join(const std::string& a, const std::string& b) {
+#if defined(_WIN32)
+    return polycpp::path::win32::join(a, b);
+#else
+    return polycpp::path::join(a, b);
+#endif
+}
+
+inline char pathDelimiter() noexcept {
+#if defined(_WIN32)
+    return ';';
+#else
+    return ':';
+#endif
+}
+
+inline std::string toLowerAscii(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return s;
+}
+
+inline bool isBatchFile(const std::string& path) {
+#if defined(_WIN32)
+    const std::string ext = toLowerAscii(extname(path));
+    return ext == ".cmd" || ext == ".bat";
+#else
+    (void)path;
+    return false;
+#endif
+}
+
+inline std::vector<std::string> windowsExecutableExtensions() {
+    std::vector<std::string> result;
+#if defined(_WIN32)
+    std::string pathext = polycpp::process::getenv("PATHEXT");
+    if (pathext.empty()) pathext = ".COM;.EXE;.BAT;.CMD";
+
+    auto add = [&](std::string ext) {
+        if (ext.empty()) return;
+        if (ext.front() != '.') ext.insert(ext.begin(), '.');
+        ext = toLowerAscii(std::move(ext));
+        if (ext != ".com" && ext != ".exe" && ext != ".bat" && ext != ".cmd") return;
+        if (std::find(result.begin(), result.end(), ext) == result.end()) {
+            result.push_back(std::move(ext));
+        }
+    };
+
+    std::istringstream stream(pathext);
+    std::string ext;
+    while (std::getline(stream, ext, ';')) add(std::move(ext));
+    for (const auto* fallback : {".com", ".exe", ".bat", ".cmd"}) add(fallback);
+#endif
+    return result;
+}
+
+inline std::vector<std::string> executableCandidates(const std::string& base) {
+#if defined(_WIN32)
+    if (!extname(base).empty()) return {base};
+
+    std::vector<std::string> candidates;
+    for (const auto& ext : windowsExecutableExtensions()) {
+        candidates.push_back(base + ext);
+    }
+    return candidates;
+#else
+    return {base};
+#endif
+}
+
+inline bool canRunFile(const std::string& path) {
+    try {
+        auto stats = polycpp::fs::statSync(path);
+        if (!stats.isFile()) return false;
+#if defined(_WIN32)
+        polycpp::fs::accessSync(path, polycpp::fs::constants::kF_OK);
+#else
+        polycpp::fs::accessSync(path, polycpp::fs::constants::kX_OK);
+#endif
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+inline std::string findExecutableInDirectory(const std::string& dir,
+                                             const std::string& name) {
+    for (const auto& candidateName : executableCandidates(name)) {
+        const std::string candidate = join(dir, candidateName);
+        if (canRunFile(candidate)) return candidate;
+    }
+    return "";
+}
+
+inline std::string findExecutablePath(const std::string& path) {
+    for (const auto& candidate : executableCandidates(path)) {
+        if (canRunFile(candidate)) return candidate;
+    }
+    return "";
+}
+
+inline std::string windowsCommandInterpreter() {
+#if defined(_WIN32)
+    std::string comspec = polycpp::process::getenv("COMSPEC");
+    return comspec.empty() ? "cmd.exe" : comspec;
+#else
+    return "";
+#endif
+}
 
 /**
  * @brief RAII helper that forwards parent-received signals to a spawned child.
@@ -84,12 +233,19 @@ struct SignalForwarder {
         for (std::size_t i = 0; i < names.size(); ++i) {
             auto active = active_;
             auto child  = child_;
-            installed_[i] = polycpp::process::on(
-                names[i], [active, child](int signum) mutable {
-                    if (!active->load()) return; // no-op after deactivate()
-                    // Best-effort forward; ignore errors (child may already be gone).
-                    try { child.kill(signum); } catch (...) {}
-                });
+            try {
+                installed_[i] = polycpp::process::on(
+                    names[i], [active, child](int signum) mutable {
+                        if (!active->load()) return; // no-op after deactivate()
+                        // Best-effort forward; ignore errors (child may already be gone).
+                        try { child.kill(signum); } catch (...) {}
+                    });
+                installedActive_[i] = true;
+            } catch (...) {
+                // Some platforms expose signal constants for API parity but
+                // cannot install handlers for all POSIX signals (notably Win32).
+                installed_[i] = 0;
+            }
         }
     }
 
@@ -100,7 +256,9 @@ struct SignalForwarder {
         // stops pinning the EventContext alive once the spawn is over.
         const auto& names = kForwarded();
         for (std::size_t i = 0; i < names.size(); ++i) {
-            polycpp::process::off(names[i], installed_[i]);
+            if (installedActive_[i]) {
+                polycpp::process::off(names[i], installed_[i]);
+            }
         }
     }
 
@@ -131,6 +289,7 @@ private:
     /// Listener tokens returned by `polycpp::process::on(...)`. Indexed by
     /// `kForwarded()` position so the destructor can remove them.
     std::array<polycpp::process::SignalListenerId, 5> installed_{};
+    std::array<bool, 5> installedActive_{};
 };
 
 } // namespace detail_exec
@@ -157,7 +316,7 @@ inline Command::Command(const std::string& name)
     impl_->outputConfiguration_.getOutHelpWidth = []() -> int { return 80; };
     impl_->outputConfiguration_.getErrHelpWidth = []() -> int { return 80; };
     impl_->outputConfiguration_.getOutHasColors = []() -> bool {
-        if (!::isatty(STDOUT_FILENO)) return false;
+        if (!polycpp::platform::isTerminal(1)) return false;
         auto env = polycpp::process::env();
         if (env.count("NO_COLOR")) return false;
         auto it = env.find("FORCE_COLOR");
@@ -167,7 +326,7 @@ inline Command::Command(const std::string& name)
         return true;
     };
     impl_->outputConfiguration_.getErrHasColors = []() -> bool {
-        if (!::isatty(STDERR_FILENO)) return false;
+        if (!polycpp::platform::isTerminal(2)) return false;
         auto env = polycpp::process::env();
         if (env.count("NO_COLOR")) return false;
         auto it = env.find("FORCE_COLOR");
@@ -1633,9 +1792,11 @@ inline void Command::executeSubCommand_(Command& subCommand,
         } catch (...) {
             resolvedScript = impl_->scriptPath_;
         }
-        std::string scriptDir = polycpp::path::dirname(resolvedScript);
+        std::string scriptDir = detail_exec::dirname(resolvedScript);
         if (!searchDir.empty()) {
-            searchDir = polycpp::path::join(scriptDir, searchDir);
+            if (!detail_exec::isAbsolute(searchDir)) {
+                searchDir = detail_exec::join(scriptDir, searchDir);
+            }
         } else {
             searchDir = scriptDir;
         }
@@ -1644,13 +1805,7 @@ inline void Command::executeSubCommand_(Command& subCommand,
     // Look for a local file in the search directory first
     std::string resolvedPath;
     if (!searchDir.empty()) {
-        std::string candidate = polycpp::path::join(searchDir, execName);
-        try {
-            polycpp::fs::accessSync(candidate, polycpp::fs::constants::kX_OK);
-            resolvedPath = candidate;
-        } catch (...) {
-            // Not found in search dir
-        }
+        resolvedPath = detail_exec::findExecutableInDirectory(searchDir, execName);
     }
 
     // If not found locally, search PATH
@@ -1678,7 +1833,18 @@ inline void Command::executeSubCommand_(Command& subCommand,
     polycpp::child_process::SpawnOptions spawnOpts;
     spawnOpts.stdio = "inherit";
 
-    auto child = polycpp::child_process::spawn(resolvedPath, launchArgs, spawnOpts);
+    std::string spawnFile = resolvedPath;
+#if defined(_WIN32)
+    if (detail_exec::isBatchFile(resolvedPath)) {
+        launchArgs.insert(launchArgs.begin(), resolvedPath);
+        launchArgs.insert(launchArgs.begin(), "/c");
+        launchArgs.insert(launchArgs.begin(), "/s");
+        launchArgs.insert(launchArgs.begin(), "/d");
+        spawnFile = detail_exec::windowsCommandInterpreter();
+    }
+#endif
+
+    auto child = polycpp::child_process::spawn(spawnFile, launchArgs, spawnOpts);
 
     // Forward parent-received signals to the child while it is running.
     // Destroying `forwarder` deactivates the per-spawn lambdas (no-op after
@@ -1734,13 +1900,8 @@ inline void Command::executeSubCommand_(Command& subCommand,
 
 inline std::string Command::findProgram_(const std::string& name) const {
     // If the name contains a path separator, treat as a path
-    if (name.find('/') != std::string::npos) {
-        try {
-            polycpp::fs::accessSync(name, polycpp::fs::constants::kX_OK);
-            return name;
-        } catch (...) {
-            return "";
-        }
+    if (detail_exec::containsPathSeparator(name)) {
+        return detail_exec::findExecutablePath(name);
     }
 
     // Search PATH
@@ -1749,15 +1910,10 @@ inline std::string Command::findProgram_(const std::string& name) const {
 
     std::istringstream stream(pathStr);
     std::string dir;
-    while (std::getline(stream, dir, ':')) {
+    while (std::getline(stream, dir, detail_exec::pathDelimiter())) {
         if (dir.empty()) continue;
-        std::string candidate = polycpp::path::join(dir, name);
-        try {
-            polycpp::fs::accessSync(candidate, polycpp::fs::constants::kX_OK);
-            return candidate;
-        } catch (...) {
-            continue;
-        }
+        std::string candidate = detail_exec::findExecutableInDirectory(dir, name);
+        if (!candidate.empty()) return candidate;
     }
     return "";
 }

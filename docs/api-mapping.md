@@ -95,7 +95,8 @@
 | `humanReadableArgName(arg)` | `polycpp::commander::humanReadableArgName(arg)` | direct | |
 | `splitOptionFlags(flags)` | `polycpp::commander::splitOptionFlags(flags)` | direct | Returns typed `SplitFlags`. |
 | `camelcase(str)` | `polycpp::commander::camelcase(str)` | direct | |
-| Windows `.cmd` / `.bat` lookup, `node --inspect` argv rewriting | (none) | deferred | Out of scope for v0; recorded in Divergences. |
+| Windows `.exe` / `.cmd` / `.bat` executable lookup | native path helpers in `Command::executeSubCommand_` / `findProgram_` | adapted | Uses Windows path separators, semicolon-delimited `PATH`, PATHEXT candidate expansion, and `COMSPEC`/`cmd.exe /d /s /c` for command shims. |
+| `node --inspect` argv rewriting | (none) | deferred | Node-runtime specific; recorded in Divergences. |
 | `Error.captureStackTrace` | (none) | omitted | Node-specific stack-capture hook, not meaningful in C++. |
 | `process.defaultApp` (Electron) | `parse(argv, {.from = "electron"})` opt-in | adapted | Caller selects "electron" mode explicitly; runtime detection of Electron is out of scope. |
 
@@ -165,9 +166,9 @@
   `polycpp::fs` (or `<filesystem>`) for `existsSync`/`realpathSync` during
   executable-subcommand search. No timer use.
 - Crypto, compression, TLS, network, and HTTP APIs: not applicable.
-- Unsupported or non-meaningful Node-specific APIs and audit reason: `Error.captureStackTrace`, automatic Electron detection via `process.defaultApp`, and Windows `.cmd`/`.bat` shim lookup with `node --inspect` argv splitting (the last is deferred, the first two are intentionally not preserved). Details:
+- Unsupported or non-meaningful Node-specific APIs and audit reason: `Error.captureStackTrace`, automatic Electron detection via `process.defaultApp`, and `node --inspect` argv splitting (the last is deferred, the first two are intentionally not preserved). Details:
   - `Error.captureStackTrace` — Node-only stack hook, no C++ equivalent.
   - `process.defaultApp` automatic Electron detection — replaced by
     explicit `parse(argv, {.from = "electron"})`.
-  - Windows `.cmd` / `.bat` shim lookup and `node --inspect` argv splitting
-    in stand-alone executable subcommand resolution — deferred.
+  - `node --inspect` argv splitting in stand-alone executable subcommand
+    resolution — deferred.

@@ -18,9 +18,10 @@ divergences and deferred features are listed in
 
 ## Prerequisites
 
-- C++20 compiler (GCC 13+ or Clang 16+)
+- C++20 compiler (GCC 13+, Clang 16+, or MSVC 19.44+)
 - CMake 3.20+
-- Ninja (recommended)
+- Ninja recommended for single-config builds; the Visual Studio generator is
+  supported on Windows
 
 ## Build
 
@@ -28,6 +29,15 @@ divergences and deferred features are listed in
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
 cmake --build build -j$(nproc)
 cd build && ctest --output-on-failure
+```
+
+On Windows with Visual Studio/MSVC:
+
+```powershell
+$polycpp = (Resolve-Path ..\polycpp).Path
+cmake -S . -B build-win -DPOLYCPP_SOURCE_DIR="$polycpp" -DPOLYCPP_SSL_BACKEND=boringssl -DOPENSSL_NO_ASM=ON
+cmake --build build-win --config Debug --parallel
+ctest --test-dir build-win -C Debug --output-on-failure
 ```
 
 ## Usage

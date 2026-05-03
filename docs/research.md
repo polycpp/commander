@@ -124,8 +124,9 @@ contract.
   through `setOptionValueWithSource`. The port mirrors the same source string
   set.
 - **Executable subcommand spawn**: relies on `child_process.spawn`,
-  signal forwarding, and `node --inspect` argv splitting. The port maps to
-  `polycpp::child_process::spawn` and re-forwards POSIX signals; Windows-only
+  executable lookup, signal forwarding, and `node --inspect` argv splitting.
+  The port maps to `polycpp::child_process::spawn`, supports native
+  POSIX/Windows executable lookup, and re-forwards POSIX signals; Node
   inspect-flag rewriting is not in scope for v0.
 - **Promise-based async parse**: `parseAsync()` must wait for both
   user-provided async actions and async hooks before resolving — a subtle
@@ -249,7 +250,7 @@ Decisions:
   `suggestSimilar()`. Every one of these directly mirrors a commander.js
   symbol; none reimplements a primitive that exists in base polycpp or in
   another companion.
-- reuse risks or integration gaps: `polycpp::process::env()` shape evolved (already adapted in commit 2dc8401); Windows-specific `node --inspect` argv rewriting is not provided by `polycpp::child_process::spawn`. Details:
+- reuse risks or integration gaps: `polycpp::process::env()` shape evolved (already adapted in commit 2dc8401); Node-specific `node --inspect` argv rewriting is not provided by `polycpp::child_process::spawn`. Details:
   - `polycpp::events::EventEmitter` is non-copyable, but `Command` no
     longer extends it directly: the v0.2 refactor moved the emitter into
     a `Command::Impl` and made `Command` a thin handle that inherits from
@@ -264,7 +265,7 @@ Decisions:
     `std::optional<Command>` to surface the lifetime model.
   - `polycpp::process::env()` shape changed (commit 2dc8401 adapted to flat
     string map). The implementation already tracks this; no further gap.
-  - `polycpp::child_process::spawn` does not implement Windows-specific
+  - `polycpp::child_process::spawn` does not implement Node-specific
     `node --inspect` argv rewriting. Out of scope for v0; recorded in
     divergences.
 
@@ -414,8 +415,8 @@ All of the following are in scope for v0 and implemented:
 
 ## Features to defer
 
-- Windows-specific stand-alone executable lookup (`.cmd`, `.bat`, `node
-  --inspect` argv rewriting). Recorded in `docs/divergences.md`.
+- Node `--inspect` argv rewriting for stand-alone executable subcommands.
+  Recorded in `docs/divergences.md`.
 - `program.on('command:*', ...)` JavaScript-only event aliases that have no
   C++ equivalent. Replaced by typed event names on the EventEmitter base.
 

@@ -1,6 +1,6 @@
 /**
  * @file test_executable.cpp
- * @brief Comprehensive POSIX coverage for stand-alone executable subcommands.
+ * @brief Cross-platform coverage for stand-alone executable subcommands.
  *
  * Targets `polycpp::commander::Command::executableCommand(...)` and the
  * dispatch path that follows it: `dispatchSubcommand_` ->
@@ -9,21 +9,20 @@
  * The cases here are adapted from upstream commander.js's
  * `tests/command.executableSubcommand.*.test.js` cluster (lookup, search,
  * mock, signals, plus the umbrella `command.executableSubcommand.test.js`).
- * Windows-specific scenarios (`.cmd`/`.bat` shim lookup, `node --inspect`
- * argv rewriting) are intentionally skipped — see `docs/divergences.md`.
+ * Node `--inspect` argv rewriting remains intentionally skipped because it
+ * is Node-runtime specific; see `docs/divergences.md`.
  *
- * Fixture programs (built alongside this test target by CMake) live in
- * `${CMAKE_BINARY_DIR}/test_fixtures/`:
+ * Fixture programs are built alongside this test target by CMake and located
+ * through `POLYCPP_COMMANDER_TEST_FIXTURE_DIR`:
  *   - `echo_argv`       — echoes argv (one `arg:`-prefixed line per entry)
  *                         to the file named by `$ECHO_ARGV_OUTPUT`.
  *   - `exit_with_code`  — `exit(atoi(argv[1]))`, defaults to 0.
- *   - `signal_writer`   — installs SIGTERM/SIGINT/SIGHUP/SIGUSR1/SIGUSR2
- *                         handlers, writes the signal name to
- *                         `$SIGNAL_WRITER_OUTPUT` and exits with `128+signum`.
- *                         Used to verify parent → child signal forwarding.
+ *   - `signal_writer`   — POSIX-only; installs signal handlers, writes the
+ *                         signal name to `$SIGNAL_WRITER_OUTPUT`, and exits
+ *                         with `128+signum`.
  *
  * Tests that need the parent program to spawn `<prog>-<sub>` create a
- * symlink to one of those fixtures inside a per-test temp directory and
+ * copy of one of those fixtures inside a per-test temp directory and
  * then point `executableDir(...)` at that directory.
  *
  * @see https://github.com/tj/commander.js/tree/master/tests
@@ -37,21 +36,25 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <csignal>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
-#include <sys/stat.h>
-#include <sys/types.h>
 #include <thread>
-#include <unistd.h>
 #include <vector>
+#if !defined(_WIN32)
+#include <csignal>
+#include <signal.h>
+#include <unistd.h>
+#endif
 
 #ifndef POLYCPP_COMMANDER_TEST_FIXTURE_DIR
 #error "POLYCPP_COMMANDER_TEST_FIXTURE_DIR must be defined by the build system"
+#endif
+#ifndef POLYCPP_COMMANDER_TEST_EXE_SUFFIX
+#define POLYCPP_COMMANDER_TEST_EXE_SUFFIX ""
 #endif
 
 using namespace polycpp::commander;
@@ -62,6 +65,13 @@ namespace fs = std::filesystem;
 
 /// @brief Absolute path to the directory containing the compiled fixtures.
 constexpr const char* kFixtureDir = POLYCPP_COMMANDER_TEST_FIXTURE_DIR;
+constexpr const char* kExeSuffix = POLYCPP_COMMANDER_TEST_EXE_SUFFIX;
+
+#if defined(_WIN32)
+constexpr char kPathDelimiter = ';';
+#else
+constexpr char kPathDelimiter = ':';
+#endif
 
 /**
  * @brief Build the absolute path to a fixture binary by name.
@@ -69,11 +79,31 @@ constexpr const char* kFixtureDir = POLYCPP_COMMANDER_TEST_FIXTURE_DIR;
  * @return Absolute path string.
  */
 std::string fixturePath(const std::string& name) {
-    return std::string(kFixtureDir) + "/" + name;
+    return std::string(kFixtureDir) + "/" + name + kExeSuffix;
 }
 
 /**
- * @brief Build a unique sandbox path under `/tmp` for a single test case.
+ * @brief Destination name for a copied fixture.
+ *
+ * Windows lookup is PATHEXT-style, so fixture copies without an explicit
+ * extension are installed as `.exe` and looked up by their extensionless
+ * command name. POSIX keeps the requested basename unchanged.
+ */
+std::string fixtureDestinationName(const std::string& dstName) {
+#if defined(_WIN32)
+    if (fs::path(dstName).has_extension()) return dstName;
+    return dstName + kExeSuffix;
+#else
+    return dstName;
+#endif
+}
+
+std::string pathList(const std::string& first, const std::string& second) {
+    return first + std::string(1, kPathDelimiter) + second;
+}
+
+/**
+ * @brief Build a unique sandbox path under the system temp directory.
  *
  * The path embeds the gtest test/suite name plus the process pid so that
  * concurrent ctest -j runs do not collide. The returned path is created on
@@ -91,7 +121,7 @@ public:
         } else {
             base += "noinfo";
         }
-        base += "-" + std::to_string(::getpid());
+        base += "-" + std::to_string(polycpp::process::pid());
         // A monotonically increasing per-process counter ensures multiple
         // Sandbox instances within the SAME test case get distinct paths.
         static std::atomic<unsigned> kSeq{0};
@@ -129,7 +159,7 @@ public:
      * predictable across kernels with different symlink semantics.
      */
     std::string installFixture(const std::string& src, const std::string& dstName) const {
-        fs::path dst = path_ / dstName;
+        fs::path dst = path_ / fixtureDestinationName(dstName);
         fs::copy_file(fixturePath(src), dst, fs::copy_options::overwrite_existing);
         fs::permissions(dst,
                         fs::perms::owner_all | fs::perms::group_read |
@@ -319,8 +349,8 @@ TEST(ExecutableSubcommand, ExecutableDirWinsOverPath) {
     std::string out = local.file("argv.out");
     EchoSinkGuard sink(out);
 
-    PathGuard guard(elsewhere.path().string() + ":" +
-                    polycpp::process::getenv("PATH"));
+    PathGuard guard(pathList(elsewhere.path().string(),
+                             polycpp::process::getenv("PATH")));
 
     Command prog("tprog");
     prog.exitOverride();
@@ -376,7 +406,9 @@ TEST(ExecutableSubcommand, ExecutableDirIsRelativeToScriptPath) {
 
     auto lines = readEchoOutput(out);
     ASSERT_FALSE(lines.empty());
-    EXPECT_NE(lines[0].find("subdir/fakeprog-task"), std::string::npos)
+    EXPECT_NE(lines[0].find("subdir"), std::string::npos)
+        << "argv[0]: " << lines[0];
+    EXPECT_NE(lines[0].find("fakeprog-task"), std::string::npos)
         << "argv[0]: " << lines[0];
 }
 
@@ -391,8 +423,8 @@ TEST(ExecutableSubcommand, FallsBackToPathSearch) {
     std::string out = sb.file("argv.out");
     EchoSinkGuard sink(out);
 
-    PathGuard guard(sb.path().string() + ":" +
-                    polycpp::process::getenv("PATH"));
+    PathGuard guard(pathList(sb.path().string(),
+                             polycpp::process::getenv("PATH")));
 
     Command prog("pathprog");
     prog.exitOverride();
@@ -542,8 +574,8 @@ TEST(ExecutableSubcommand, NotExecutableSearchContinues) {
     std::string out = onPath.file("argv.out");
     EchoSinkGuard sink(out);
 
-    PathGuard guard(onPath.path().string() + ":" +
-                    polycpp::process::getenv("PATH"));
+    PathGuard guard(pathList(onPath.path().string(),
+                             polycpp::process::getenv("PATH")));
 
     Command prog("npxprog");
     prog.exitOverride();
@@ -821,7 +853,7 @@ TEST(ExecutableSubcommand, RequiredArgumentParsedOnDeclaration) {
 
 TEST(ExecutableSubcommand, AbsoluteExecutableDirIgnoresRelativeJoinSuffix) {
     Sandbox sb;
-    sb.installFixture("echo_argv", "absdirprog-touch");
+    const std::string installed = sb.installFixture("echo_argv", "absdirprog-touch");
     std::string out = sb.file("argv.out");
     EchoSinkGuard sink(out);
 
@@ -835,7 +867,7 @@ TEST(ExecutableSubcommand, AbsoluteExecutableDirIgnoresRelativeJoinSuffix) {
 
     auto lines = readEchoOutput(out);
     ASSERT_FALSE(lines.empty());
-    EXPECT_EQ(lines[0], "arg:" + sb.file("absdirprog-touch"));
+    EXPECT_EQ(lines[0], "arg:" + installed);
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -865,6 +897,38 @@ TEST(ExecutableSubcommand, OperandsAfterDoubleDashStillForwarded) {
 }
 
 // ──────────────────────────────────────────────────────────────────────
+#if defined(_WIN32)
+TEST(ExecutableSubcommand, WindowsCmdShimLookupSucceeds) {
+    Sandbox sb;
+    const std::string marker = sb.file("batch-marker.txt");
+    const std::string script = sb.file("shimprog-run.cmd");
+    {
+        std::ofstream f(script, std::ios::trunc);
+        f << "@echo off\r\n";
+        f << "echo batch-ran>\"%POLYCPP_COMMANDER_BATCH_MARKER%\"\r\n";
+        f << "exit /b 0\r\n";
+    }
+
+    polycpp::process::setenv("POLYCPP_COMMANDER_BATCH_MARKER", marker);
+    struct EnvCleanup {
+        ~EnvCleanup() {
+            polycpp::process::unsetenv("POLYCPP_COMMANDER_BATCH_MARKER");
+        }
+    } envCleanup;
+
+    Command prog("shimprog");
+    prog.exitOverride();
+    prog.executableDir(sb.path().string());
+    prog.executableCommand("run", "run a Windows command shim");
+
+    auto err = parseUserCatching(prog, {"run"});
+    ASSERT_FALSE(err.has_value()) << err->what();
+
+    std::error_code ec;
+    EXPECT_TRUE(fs::exists(marker, ec));
+}
+#endif
+
 // Signal forwarding cluster.
 //
 // Replaces the upstream `tests/command.executableSubcommand.signals.test.js`
@@ -889,12 +953,14 @@ TEST(ExecutableSubcommand, OperandsAfterDoubleDashStillForwarded) {
 // exceeding it means the spawn pipeline stalled, which is a real bug.
 // ──────────────────────────────────────────────────────────────────────
 
+#if !defined(_WIN32)
+
 namespace {
 
 /// @brief Async-safe-ish file existence check used by the sender thread.
 bool fileExists(const std::string& path) {
-    struct stat st;
-    return ::stat(path.c_str(), &st) == 0;
+    std::error_code ec;
+    return fs::exists(path, ec);
 }
 
 /// @brief Read the full contents of a file as a string. Returns "" if absent.
@@ -1157,3 +1223,5 @@ TEST(ExecutableSubcommand, ExitCodeAfterSIGTERM) {
     EXPECT_EQ(err->code, "commander.executeSubCommandAsync");
     EXPECT_EQ(err->exitCode, 128 + SIGTERM);
 }
+
+#endif // !defined(_WIN32)

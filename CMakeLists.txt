@@ -34,6 +34,9 @@ target_include_directories(polycpp_commander PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
+if(MSVC)
+    target_compile_options(polycpp_commander PRIVATE /bigobj)
+endif()
 
 # Alias for consistent naming
 add_library(polycpp::commander ALIAS polycpp_commander)
@@ -64,14 +67,22 @@ if(POLYCPP_COMMANDER_BUILD_TESTS)
         set(test_target "polycpp_commander_test_${area}")
         add_executable(${test_target} tests/test_${area}.cpp)
         target_link_libraries(${test_target} PRIVATE polycpp::commander GTest::gtest_main)
+        if(MSVC)
+            target_compile_options(${test_target} PRIVATE /bigobj)
+        endif()
         gtest_discover_tests(${test_target})
     endforeach()
 
     # Stand-alone executable subcommand tests need real on-disk programs to
     # spawn. Build small fixture binaries (NOT linked against polycpp_commander
-    # — they run in a separate process) under a known directory and pass that
-    # directory in via a compile definition so the test code can resolve them.
-    foreach(fixture IN ITEMS echo_argv exit_with_code signal_writer)
+    # — they run in a separate process) and pass the fixture target output
+    # directory in via a compile definition so multi-config generators work.
+    set(POLYCPP_COMMANDER_EXECUTABLE_FIXTURES echo_argv exit_with_code)
+    if(NOT WIN32)
+        list(APPEND POLYCPP_COMMANDER_EXECUTABLE_FIXTURES signal_writer)
+    endif()
+
+    foreach(fixture IN LISTS POLYCPP_COMMANDER_EXECUTABLE_FIXTURES)
         set(fixture_target "polycpp_commander_test_executable_fixture_${fixture}")
         add_executable(${fixture_target} tests/fixtures/${fixture}.cpp)
         set_target_properties(${fixture_target} PROPERTIES
@@ -82,12 +93,16 @@ if(POLYCPP_COMMANDER_BUILD_TESTS)
     add_executable(polycpp_commander_test_executable tests/test_executable.cpp)
     target_link_libraries(polycpp_commander_test_executable PRIVATE
         polycpp::commander GTest::gtest_main)
+    if(MSVC)
+        target_compile_options(polycpp_commander_test_executable PRIVATE /bigobj)
+    endif()
     target_compile_definitions(polycpp_commander_test_executable PRIVATE
-        POLYCPP_COMMANDER_TEST_FIXTURE_DIR="${CMAKE_BINARY_DIR}/test_fixtures")
-    add_dependencies(polycpp_commander_test_executable
-        polycpp_commander_test_executable_fixture_echo_argv
-        polycpp_commander_test_executable_fixture_exit_with_code
-        polycpp_commander_test_executable_fixture_signal_writer)
+        POLYCPP_COMMANDER_TEST_FIXTURE_DIR="$<TARGET_FILE_DIR:polycpp_commander_test_executable_fixture_echo_argv>"
+        POLYCPP_COMMANDER_TEST_EXE_SUFFIX="${CMAKE_EXECUTABLE_SUFFIX}")
+    foreach(fixture IN LISTS POLYCPP_COMMANDER_EXECUTABLE_FIXTURES)
+        add_dependencies(polycpp_commander_test_executable
+            "polycpp_commander_test_executable_fixture_${fixture}")
+    endforeach()
     gtest_discover_tests(polycpp_commander_test_executable)
 endif()
 
@@ -107,6 +122,9 @@ if(POLYCPP_COMMANDER_BUILD_EXAMPLES)
         set(example_target "polycpp_commander_example_${example_name}")
         add_executable("${example_target}" "${example_source}")
         target_link_libraries("${example_target}" PRIVATE polycpp::commander)
+        if(MSVC)
+            target_compile_options("${example_target}" PRIVATE /bigobj)
+        endif()
         set_target_properties("${example_target}" PROPERTIES
             OUTPUT_NAME "${example_name}"
             RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/examples"
