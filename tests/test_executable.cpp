@@ -68,9 +68,9 @@ constexpr const char* kFixtureDir = POLYCPP_COMMANDER_TEST_FIXTURE_DIR;
 constexpr const char* kExeSuffix = POLYCPP_COMMANDER_TEST_EXE_SUFFIX;
 
 #if defined(_WIN32)
-constexpr char kPathDelimiter = ';';
+constexpr char kPathDelimiter = polycpp::path::win32::delimiter;
 #else
-constexpr char kPathDelimiter = ':';
+constexpr char kPathDelimiter = polycpp::path::delimiter;
 #endif
 
 /**

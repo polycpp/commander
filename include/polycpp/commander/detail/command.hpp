@@ -42,9 +42,9 @@ namespace detail_exec {
 
 inline bool isPathSeparator(char c) noexcept {
 #if defined(_WIN32)
-    return c == '/' || c == '\\';
+    return c == polycpp::path::sep || c == polycpp::path::win32::sep;
 #else
-    return c == '/';
+    return c == polycpp::path::sep;
 #endif
 }
 
@@ -86,9 +86,9 @@ inline std::string join(const std::string& a, const std::string& b) {
 
 inline char pathDelimiter() noexcept {
 #if defined(_WIN32)
-    return ';';
+    return polycpp::path::win32::delimiter;
 #else
-    return ':';
+    return polycpp::path::delimiter;
 #endif
 }
 
