@@ -187,8 +187,7 @@ public:
     // --- Metadata getters/setters (dual getter/setter pattern) ---
 
     /**
-     * @brief Get or set the command name.
-     * @param str If provided, sets the name and returns *this.
+     * @brief Get the command name.
      * @return The command name when called without arguments.
      * @par Example
      * @code{.cpp}
