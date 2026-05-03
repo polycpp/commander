@@ -8,7 +8,7 @@
  * `detail/command_impl.hpp`). The aggregator includes that file before this
  * one so all members are fully visible.
  *
- * @since 0.1.0
+ * @since 1.0.0
  */
 
 #include <polycpp/commander/command.hpp>
@@ -217,7 +217,7 @@ inline std::string windowsCommandInterpreter() {
  *   cheap to copy) and the `active_` flag by value so the listener remains
  *   safe even before removal completes.
  *
- * @since 0.1.0
+ * @since 1.0.0
  */
 struct SignalForwarder {
     /**

@@ -4,7 +4,7 @@
  * @file suggest_similar.hpp
  * @brief "Did you mean ...?" suggestions using Damerau-Levenshtein distance.
  * @see https://github.com/tj/commander.js
- * @since 0.1.0
+ * @since 1.0.0
  */
 
 #include <string>
@@ -37,7 +37,7 @@ namespace commander {
  * @endcode
  *
  * @see https://github.com/tj/commander.js
- * @since 0.1.0
+ * @since 1.0.0
  */
 std::string suggestSimilar(const std::string& word, const std::vector<std::string>& candidates);
 

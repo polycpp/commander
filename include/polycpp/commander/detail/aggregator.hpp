@@ -10,7 +10,7 @@
  *    and by Help's internals
  * 3. Inline implementations (need all declarations and Impl above)
  *
- * @since 0.1.0
+ * @since 1.0.0
  */
 
 // Declarations

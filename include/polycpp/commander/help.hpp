@@ -4,7 +4,7 @@
  * @file help.hpp
  * @brief Help class for formatting command-line help output.
  * @see https://github.com/tj/commander.js#custom-help
- * @since 0.1.0
+ * @since 1.0.0
  */
 
 #include <polycpp/commander/argument.hpp>
@@ -23,7 +23,7 @@ class Command;
 /**
  * @brief Options for Help::prepareContext().
  * @see https://github.com/tj/commander.js#custom-help
- * @since 0.1.0
+ * @since 1.0.0
  */
 struct PrepareContextOptions {
     int helpWidth = 80;             ///< Help text display width.
@@ -45,7 +45,7 @@ struct PrepareContextOptions {
  * @endcode
  *
  * @see https://github.com/tj/commander.js#custom-help
- * @since 0.1.0
+ * @since 1.0.0
  */
 class Help {
 public:
@@ -62,7 +62,7 @@ public:
      *   help.configure({.sortOptions = true, .helpWidth = 100});
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     struct HelpConfiguration {
         std::optional<int> helpWidth;            ///< Override Help::helpWidth().
@@ -75,13 +75,13 @@ public:
 
     /**
      * @brief Construct a Help with default configuration.
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Help() = default;
 
     /**
      * @brief Virtual destructor for subclassing.
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual ~Help() = default;
 
@@ -98,7 +98,7 @@ public:
      *   int w = help.helpWidth();
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     int helpWidth() const { return helpWidth_; }
 
@@ -111,7 +111,7 @@ public:
      *   help.helpWidth(100);
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Help& helpWidth(int width) { helpWidth_ = width; return *this; }
 
@@ -123,7 +123,7 @@ public:
      *   int w = help.minWidthToWrap();
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     int minWidthToWrap() const { return minWidthToWrap_; }
 
@@ -136,7 +136,7 @@ public:
      *   help.minWidthToWrap(20);
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Help& minWidthToWrap(int width) { minWidthToWrap_ = width; return *this; }
 
@@ -148,7 +148,7 @@ public:
      *   bool sorted = help.sortSubcommands();
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     bool sortSubcommands() const { return sortSubcommands_; }
 
@@ -161,7 +161,7 @@ public:
      *   help.sortSubcommands(true);
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Help& sortSubcommands(bool value) { sortSubcommands_ = value; return *this; }
 
@@ -173,7 +173,7 @@ public:
      *   bool sorted = help.sortOptions();
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     bool sortOptions() const { return sortOptions_; }
 
@@ -186,7 +186,7 @@ public:
      *   help.sortOptions(true);
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Help& sortOptions(bool value) { sortOptions_ = value; return *this; }
 
@@ -198,7 +198,7 @@ public:
      *   bool shown = help.showGlobalOptions();
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     bool showGlobalOptions() const { return showGlobalOptions_; }
 
@@ -211,7 +211,7 @@ public:
      *   help.showGlobalOptions(true);
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Help& showGlobalOptions(bool value) { showGlobalOptions_ = value; return *this; }
 
@@ -223,7 +223,7 @@ public:
      *   bool color = help.outputHasColors();
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     bool outputHasColors() const { return outputHasColors_; }
 
@@ -236,7 +236,7 @@ public:
      *   help.outputHasColors(true);
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Help& outputHasColors(bool value) { outputHasColors_ = value; return *this; }
 
@@ -255,7 +255,7 @@ public:
      *   help.configure({.sortOptions = true, .helpWidth = 100});
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Help& configure(const HelpConfiguration& cfg);
 
@@ -273,7 +273,7 @@ public:
      *   help.prepareContext(120);
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual void prepareContext(int contextHelpWidth = 80);
 
@@ -289,7 +289,7 @@ public:
      *   help.prepareContext({.helpWidth = 120, .outputHasColors = true});
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual void prepareContext(const PrepareContextOptions& options);
 
@@ -307,7 +307,7 @@ public:
      *   auto cmds = help.visibleCommands(program);
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual std::vector<const Command*> visibleCommands(const Command& cmd) const;
 
@@ -323,7 +323,7 @@ public:
      *   auto opts = help.visibleOptions(program);
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual std::vector<Option> visibleOptions(const Command& cmd) const;
 
@@ -340,7 +340,7 @@ public:
      *   auto globalOpts = help.visibleGlobalOptions(program);
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual std::vector<Option> visibleGlobalOptions(const Command& cmd) const;
 
@@ -356,7 +356,7 @@ public:
      *   auto args = help.visibleArguments(program);
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual std::vector<const Argument*> visibleArguments(const Command& cmd) const;
 
@@ -371,7 +371,7 @@ public:
      *   auto term = help.subcommandTerm(sub);
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual std::string subcommandTerm(const Command& cmd) const;
 
@@ -387,7 +387,7 @@ public:
      *   auto desc = help.subcommandDescription(sub);
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual std::string subcommandDescription(const Command& cmd) const;
 
@@ -400,7 +400,7 @@ public:
      *   auto term = help.optionTerm(opt);
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual std::string optionTerm(const Option& option) const;
 
@@ -413,7 +413,7 @@ public:
      *   auto desc = help.optionDescription(opt);
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual std::string optionDescription(const Option& option) const;
 
@@ -426,7 +426,7 @@ public:
      *   auto term = help.argumentTerm(arg);
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual std::string argumentTerm(const Argument& argument) const;
 
@@ -439,7 +439,7 @@ public:
      *   auto desc = help.argumentDescription(arg);
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual std::string argumentDescription(const Argument& argument) const;
 
@@ -454,7 +454,7 @@ public:
      *   auto len = help.longestSubcommandTermLength(program);
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual int longestSubcommandTermLength(const Command& cmd) const;
 
@@ -467,7 +467,7 @@ public:
      *   auto len = help.longestOptionTermLength(program);
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual int longestOptionTermLength(const Command& cmd) const;
 
@@ -480,7 +480,7 @@ public:
      *   auto len = help.longestGlobalOptionTermLength(program);
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual int longestGlobalOptionTermLength(const Command& cmd) const;
 
@@ -493,7 +493,7 @@ public:
      *   auto len = help.longestArgumentTermLength(program);
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual int longestArgumentTermLength(const Command& cmd) const;
 
@@ -508,7 +508,7 @@ public:
      *   auto usage = help.commandUsage(program);
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual std::string commandUsage(const Command& cmd) const;
 
@@ -521,7 +521,7 @@ public:
      *   auto desc = help.commandDescription(program);
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual std::string commandDescription(const Command& cmd) const;
 
@@ -535,7 +535,7 @@ public:
      * @param str The title string.
      * @return Styled string.
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual std::string styleTitle(const std::string& str) const;
 
@@ -547,7 +547,7 @@ public:
      * @param str The usage string.
      * @return Styled string.
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual std::string styleUsage(const std::string& str) const;
 
@@ -559,7 +559,7 @@ public:
      * @param str The description string.
      * @return Styled string.
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual std::string styleCommandDescription(const std::string& str) const;
 
@@ -571,7 +571,7 @@ public:
      * @param str The option term string.
      * @return Styled string.
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual std::string styleOptionTerm(const std::string& str) const;
 
@@ -583,7 +583,7 @@ public:
      * @param str The description string.
      * @return Styled string.
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual std::string styleOptionDescription(const std::string& str) const;
 
@@ -595,7 +595,7 @@ public:
      * @param str The subcommand term string.
      * @return Styled string.
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual std::string styleSubcommandTerm(const std::string& str) const;
 
@@ -607,7 +607,7 @@ public:
      * @param str The description string.
      * @return Styled string.
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual std::string styleSubcommandDescription(const std::string& str) const;
 
@@ -619,7 +619,7 @@ public:
      * @param str The argument term string.
      * @return Styled string.
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual std::string styleArgumentTerm(const std::string& str) const;
 
@@ -631,7 +631,7 @@ public:
      * @param str The description string.
      * @return Styled string.
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual std::string styleArgumentDescription(const std::string& str) const;
 
@@ -643,7 +643,7 @@ public:
      * @param str The description string.
      * @return Styled string.
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual std::string styleDescriptionText(const std::string& str) const;
 
@@ -658,7 +658,7 @@ public:
      *   auto width = help.padWidth(program);
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual int padWidth(const Command& cmd) const;
 
@@ -671,7 +671,7 @@ public:
      *   auto w = help.displayWidth("hello");  // 5
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual int displayWidth(const std::string& str) const;
 
@@ -687,7 +687,7 @@ public:
      *   bool pre = help.preformatted("line1\n  indented");  // true
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual bool preformatted(const std::string& str) const;
 
@@ -704,7 +704,7 @@ public:
      *   auto wrapped = help.boxWrap("long text here", 20);
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual std::string boxWrap(const std::string& str, int width) const;
 
@@ -723,7 +723,7 @@ public:
      *   auto item = help.formatItem("-v, --verbose", 20, "enable verbose output");
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual std::string formatItem(const std::string& term, int termWidth,
                                    const std::string& description) const;
@@ -738,7 +738,7 @@ public:
      *   auto text = help.formatHelp(program, help);
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual std::string formatHelp(const Command& cmd, const Help& helper) const;
 
@@ -759,7 +759,7 @@ private:
  * @code{.cpp}
  *   auto plain = stripColor("\033[31mred\033[0m");  // "red"
  * @endcode
- * @since 0.1.0
+ * @since 1.0.0
  */
 std::string stripColor(const std::string& str);
 

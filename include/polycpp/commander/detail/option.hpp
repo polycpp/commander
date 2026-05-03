@@ -3,7 +3,7 @@
 /**
  * @file detail/option.hpp
  * @brief Inline implementations for the Option class and related utilities.
- * @since 0.1.0
+ * @since 1.0.0
  */
 
 #include <polycpp/commander/option.hpp>

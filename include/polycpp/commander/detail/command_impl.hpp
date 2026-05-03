@@ -13,7 +13,7 @@
  * before any inline-implementation header that needs to read or write Impl
  * fields.
  *
- * @since 0.2.0
+ * @since 1.0.0
  */
 
 #include <polycpp/commander/command.hpp>

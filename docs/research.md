@@ -9,7 +9,7 @@
 - license: MIT
 - license evidence: package.json license field, manual SPDX check: upstream LICENSE confirms MIT
 - category: CLI / argument parser
-- port version: 0.1.0
+- port version: 1.0.0
 - versioning note: port version is independent from upstream versioning; the C++ port owns its SemVer
 
 ## Package purpose
@@ -459,7 +459,7 @@ These are recorded for triage only; none are committed to.
 
 ## v0 scope
 
-- port version: 0.1.0
+- port version: 1.0.0
 - versioning note: port version is independent from upstream versioning
 - supported APIs: see "Key features to port first" above
 - unsupported APIs: see `docs/divergences.md` "Deferred Features" and

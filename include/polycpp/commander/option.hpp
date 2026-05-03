@@ -4,7 +4,7 @@
  * @file option.hpp
  * @brief Option class for defining command-line options.
  * @see https://github.com/tj/commander.js#options
- * @since 0.1.0
+ * @since 1.0.0
  */
 
 #include <polycpp/commander/argument.hpp>
@@ -41,7 +41,7 @@ namespace commander {
  * @endcode
  *
  * @see https://github.com/tj/commander.js#options
- * @since 0.1.0
+ * @since 1.0.0
  */
 class Option {
 public:
@@ -50,7 +50,7 @@ public:
      * @param flags Flag specification (e.g., "-f, --flag <value>").
      * @param description Human-readable description for help output.
      * @throws std::runtime_error If the flags string cannot be parsed.
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Option(const std::string& flags, const std::string& description = "");
 
@@ -68,7 +68,7 @@ public:
      *   assert(opt.name() == "dry-run");
      * @endcode
      * @see https://github.com/tj/commander.js#options
-     * @since 0.1.0
+     * @since 1.0.0
      */
     std::string name() const;
 
@@ -85,7 +85,7 @@ public:
      *   assert(opt.attributeName() == "dryRun");
      * @endcode
      * @see https://github.com/tj/commander.js#options
-     * @since 0.1.0
+     * @since 1.0.0
      */
     std::string attributeName() const;
 
@@ -98,7 +98,7 @@ public:
      *   assert(opt.isBoolean() == true);
      * @endcode
      * @see https://github.com/tj/commander.js#options
-     * @since 0.1.0
+     * @since 1.0.0
      */
     bool isBoolean() const;
 
@@ -112,7 +112,7 @@ public:
      *   assert(opt.is("--verbose"));
      * @endcode
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     bool is(const std::string& arg) const;
 
@@ -126,7 +126,7 @@ public:
      *   opt.defaultValue(polycpp::JsonValue("red"), "favorite color");
      * @endcode
      * @see https://github.com/tj/commander.js#options
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Option& defaultValue(const polycpp::JsonValue& value, const std::string& description = "");
 
@@ -139,7 +139,7 @@ public:
      *   Option opt("--color").defaultValue(polycpp::JsonValue("GREYSCALE")).preset(polycpp::JsonValue("RGB"));
      * @endcode
      * @see https://github.com/tj/commander.js#options
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Option& preset(const polycpp::JsonValue& arg);
 
@@ -152,7 +152,7 @@ public:
      *   opt.conflicts("cmyk");
      * @endcode
      * @see https://github.com/tj/commander.js#options
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Option& conflicts(const std::string& name);
 
@@ -165,7 +165,7 @@ public:
      *   opt.conflicts({"ts", "jsx"});
      * @endcode
      * @see https://github.com/tj/commander.js#options
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Option& conflicts(const std::vector<std::string>& names);
 
@@ -178,7 +178,7 @@ public:
      *   opt.implies({{"log", polycpp::JsonValue("trace.txt")}});
      * @endcode
      * @see https://github.com/tj/commander.js#options
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Option& implies(const std::map<std::string, polycpp::JsonValue>& values);
 
@@ -191,7 +191,7 @@ public:
      *   opt.env("MY_APP_VERBOSE");
      * @endcode
      * @see https://github.com/tj/commander.js#options
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Option& env(const std::string& name);
 
@@ -206,7 +206,7 @@ public:
      *   });
      * @endcode
      * @see https://github.com/tj/commander.js#custom-option-processing
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Option& argParser(ParseFn fn);
 
@@ -219,7 +219,7 @@ public:
      *   opt.makeOptionMandatory();
      * @endcode
      * @see https://github.com/tj/commander.js#options
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Option& makeOptionMandatory(bool mandatory = true);
 
@@ -232,7 +232,7 @@ public:
      *   opt.hideHelp();
      * @endcode
      * @see https://github.com/tj/commander.js#options
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Option& hideHelp(bool hide = true);
 
@@ -245,7 +245,7 @@ public:
      *   opt.choices({"small", "medium", "large"});
      * @endcode
      * @see https://github.com/tj/commander.js#options
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Option& choices(const std::vector<std::string>& values);
 
@@ -280,13 +280,13 @@ private:
  * @code{.cpp}
  *   assert(camelcase("dry-run") == "dryRun");
  * @endcode
- * @since 0.1.0
+ * @since 1.0.0
  */
 std::string camelcase(const std::string& str);
 
 /**
  * @brief Result of splitting option flags.
- * @since 0.1.0
+ * @since 1.0.0
  */
 struct SplitFlags {
     std::optional<std::string> shortFlag; ///< Short flag (e.g., "-f").
@@ -304,7 +304,7 @@ struct SplitFlags {
  *   assert(result.shortFlag == "-f");
  *   assert(result.longFlag == "--file");
  * @endcode
- * @since 0.1.0
+ * @since 1.0.0
  */
 SplitFlags splitOptionFlags(const std::string& flags);
 

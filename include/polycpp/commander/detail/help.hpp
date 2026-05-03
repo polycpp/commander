@@ -7,7 +7,7 @@
  * This file comes AFTER command.hpp in the aggregator include order,
  * so the full Command definition is available.
  *
- * @since 0.1.0
+ * @since 1.0.0
  */
 
 #include <polycpp/commander/help.hpp>

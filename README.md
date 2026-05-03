@@ -4,12 +4,12 @@ C++ port of [commander.js](https://www.npmjs.com/package/commander) for [polycpp
 
 A complete solution for building command-line interfaces in C++.
 
-Port version: `0.1.0`
+Port version: `1.0.0`
 Initial port based on upstream version: `14.0.3`
 
 ## Status
 
-Active. v0.1.0 implements the upstream public API for options, arguments,
+Active. v1.0.0 implements the upstream public API for options, arguments,
 subcommands, action handlers, lifecycle hooks, help formatting, "did you
 mean?" suggestions, environment-variable binding, custom parsers, and
 Promise-based async actions on top of polycpp's event loop. Known

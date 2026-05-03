@@ -4,7 +4,7 @@
 
 PROJECT_NAME           = "commander"
 PROJECT_BRIEF          = "Command-line option parser for polycpp"
-PROJECT_NUMBER         = 0.1.0
+PROJECT_NUMBER         = 1.0.0
 
 OUTPUT_DIRECTORY       = build/doxygen
 INPUT                  = ../include

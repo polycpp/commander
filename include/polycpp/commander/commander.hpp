@@ -4,7 +4,7 @@
  * @file commander.hpp
  * @brief Module entry point — factory functions and global program singleton.
  * @see https://github.com/tj/commander.js
- * @since 0.1.0
+ * @since 1.0.0
  */
 
 #include <polycpp/commander/argument.hpp>
@@ -33,7 +33,7 @@ namespace commander {
  *   prog.parse();
  * @endcode
  * @see https://github.com/tj/commander.js
- * @since 0.1.0
+ * @since 1.0.0
  */
 Command& program();
 
@@ -52,7 +52,7 @@ Command& program();
  *   cmd.version("1.0").parse();
  * @endcode
  * @see https://github.com/tj/commander.js
- * @since 0.1.0
+ * @since 1.0.0
  */
 Command createCommand(const std::string& name = "");
 
@@ -66,7 +66,7 @@ Command createCommand(const std::string& name = "");
  *   auto opt = polycpp::commander::createOption("-v, --verbose", "verbose mode");
  * @endcode
  * @see https://github.com/tj/commander.js
- * @since 0.1.0
+ * @since 1.0.0
  */
 Option createOption(const std::string& flags, const std::string& description = "");
 
@@ -80,7 +80,7 @@ Option createOption(const std::string& flags, const std::string& description = "
  *   auto arg = polycpp::commander::createArgument("<file>", "input file");
  * @endcode
  * @see https://github.com/tj/commander.js
- * @since 0.1.0
+ * @since 1.0.0
  */
 Argument createArgument(const std::string& name, const std::string& description = "");
 

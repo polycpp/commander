@@ -4,7 +4,7 @@
  * @file command.hpp
  * @brief Command class — the heart of the commander library.
  * @see https://github.com/tj/commander.js
- * @since 0.1.0
+ * @since 1.0.0
  */
 
 #include <polycpp/commander/argument.hpp>
@@ -30,7 +30,7 @@ namespace polycpp {
 namespace commander {
 
 /// @brief Options controlling how argv is parsed.
-/// @since 0.1.0
+/// @since 1.0.0
 struct ParseOptions {
     /// @brief Where the args are from. Allowed values:
     /// - `"node"` — `[runtime, script, ...userArgs]`; skips first 2 entries.
@@ -42,20 +42,20 @@ struct ParseOptions {
 };
 
 /// @brief Result of parseOptions() — operands and unknown arguments.
-/// @since 0.1.0
+/// @since 1.0.0
 struct ParseOptionsResult {
     std::vector<std::string> operands; ///< Positional operands.
     std::vector<std::string> unknown;  ///< Unknown arguments.
 };
 
 /// @brief Context for help output.
-/// @since 0.1.0
+/// @since 1.0.0
 struct HelpContext {
     bool error = false; ///< Whether help is being shown due to an error.
 };
 
 /// @brief Configuration for output writing.
-/// @since 0.1.0
+/// @since 1.0.0
 struct OutputConfiguration {
     std::function<void(const std::string&)> writeOut;   ///< Write to stdout.
     std::function<void(const std::string&)> writeErr;   ///< Write to stderr.
@@ -67,22 +67,22 @@ struct OutputConfiguration {
 };
 
 /// @brief Type alias for option value storage (always a JsonObject).
-/// @since 0.1.0
+/// @since 1.0.0
 using OptionValues = polycpp::JsonValue;
 
 /// @brief Type alias for option value source tracking.
-/// @since 0.1.0
+/// @since 1.0.0
 using OptionValueSources = std::unordered_map<std::string, std::string>;
 
 /// @brief Type alias for error options passed to error().
-/// @since 0.1.0
+/// @since 1.0.0
 struct ErrorOptions {
     int exitCode = 1;                    ///< Exit code for process.exit().
     std::string code = "commander.error"; ///< Error identifier code.
 };
 
 /// @brief Type alias for command options (isDefault, hidden).
-/// @since 0.1.0
+/// @since 1.0.0
 struct CommandOptions {
     bool isDefault = false; ///< Whether this is the default command.
     bool hidden = false;    ///< Whether to hide from help.
@@ -93,26 +93,26 @@ struct CommandOptions {
 /// The action handler receives (processedArgs..., opts, command).
 /// In C++ we pass the processed args as a vector of polycpp::JsonValue,
 /// the opts as OptionValues (a JsonValue object), and a reference to the command.
-/// @since 0.1.0
+/// @since 1.0.0
 using ActionFn = std::function<void(const std::vector<polycpp::JsonValue>& args,
                                      const polycpp::JsonValue& opts,
                                      Command& cmd)>;
 
 /// @brief Type alias for hook functions.
-/// @since 0.1.0
+/// @since 1.0.0
 using HookFn = std::function<void(Command& thisCommand, Command& actionCommand)>;
 
 /// @brief Type alias for async action handler functions.
 ///
 /// Like ActionFn but returns a Promise<void> for async operations.
-/// @since 0.2.0
+/// @since 1.0.0
 using AsyncActionFn = std::function<polycpp::Promise<void>(
     const std::vector<polycpp::JsonValue>& args,
     const polycpp::JsonValue& opts,
     Command& cmd)>;
 
 /// @brief Type alias for async hook functions.
-/// @since 0.2.0
+/// @since 1.0.0
 using AsyncHookFn = std::function<polycpp::Promise<void>(Command& thisCommand, Command& actionCommand)>;
 
 /**
@@ -148,7 +148,7 @@ using AsyncHookFn = std::function<polycpp::Promise<void>(Command& thisCommand, C
  * @endcode
  *
  * @see https://github.com/tj/commander.js
- * @since 0.1.0
+ * @since 1.0.0
  */
 class Command : public polycpp::events::EventEmitterForwarder {
 public:
@@ -163,25 +163,25 @@ public:
      *   Command sub("serve");
      * @endcode
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     explicit Command(const std::string& name = "");
 
     /// @brief Destructor.
-    /// @since 0.1.0
+    /// @since 1.0.0
     ~Command();
 
     /// @brief Copyable — handles share state via `std::shared_ptr<Impl>`.
-    /// @since 0.2.0
+    /// @since 1.0.0
     Command(const Command&) = default;
     /// @brief Movable — handles share state via `std::shared_ptr<Impl>`.
-    /// @since 0.2.0
+    /// @since 1.0.0
     Command(Command&&) noexcept = default;
     /// @brief Copy assignment — both handles end up referring to the same Impl.
-    /// @since 0.2.0
+    /// @since 1.0.0
     Command& operator=(const Command&) = default;
     /// @brief Move assignment — both handles end up referring to the same Impl.
-    /// @since 0.2.0
+    /// @since 1.0.0
     Command& operator=(Command&&) noexcept = default;
 
     // --- Metadata getters/setters (dual getter/setter pattern) ---
@@ -196,7 +196,7 @@ public:
      *   std::string n = cmd.name();
      * @endcode
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     std::string name() const;
 
@@ -205,7 +205,7 @@ public:
      * @param str The new command name.
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& name(const std::string& str);
 
@@ -213,7 +213,7 @@ public:
      * @brief Get the command description.
      * @return The description string.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     std::string description() const;
 
@@ -222,7 +222,7 @@ public:
      * @param str The description text.
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& description(const std::string& str);
 
@@ -230,7 +230,7 @@ public:
      * @brief Get the command summary.
      * @return The summary string.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     std::string summary() const;
 
@@ -239,7 +239,7 @@ public:
      * @param str The summary text.
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& summary(const std::string& str);
 
@@ -250,7 +250,7 @@ public:
      *
      * @return The usage string.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     std::string usage() const;
 
@@ -259,7 +259,7 @@ public:
      * @param str The custom usage text.
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& usage(const std::string& str);
 
@@ -267,7 +267,7 @@ public:
      * @brief Get the program version.
      * @return The version string, or empty if not set.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     std::string version() const;
 
@@ -283,7 +283,7 @@ public:
      *   program.version("1.0.0", "-v, --vers", "show version");
      * @endcode
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& version(const std::string& str,
                      const std::string& flags = "-V, --version",
@@ -295,7 +295,7 @@ public:
      * @brief Get the first alias.
      * @return The first alias, or empty string if none.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     std::string alias() const;
 
@@ -304,7 +304,7 @@ public:
      * @param alias The alias name.
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& alias(const std::string& alias);
 
@@ -312,7 +312,7 @@ public:
      * @brief Get all aliases.
      * @return Vector of alias strings.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     std::vector<std::string> aliases() const;
 
@@ -321,7 +321,7 @@ public:
      * @param aliases Vector of alias names.
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& aliases(const std::vector<std::string>& aliases);
 
@@ -330,7 +330,7 @@ public:
      * @param filename The filename to derive the name from.
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& nameFromFilename(const std::string& filename);
 
@@ -346,7 +346,7 @@ public:
      *   program.option("-v, --verbose", "enable verbose output");
      * @endcode
      * @see https://github.com/tj/commander.js#options
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& option(const std::string& flags, const std::string& description = "");
 
@@ -357,7 +357,7 @@ public:
      * @param defaultValue Default value for the option.
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js#options
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& option(const std::string& flags, const std::string& description,
                     const polycpp::JsonValue& defaultValue);
@@ -370,7 +370,7 @@ public:
      * @param defaultValue Default value for the option.
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js#custom-option-processing
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& option(const std::string& flags, const std::string& description,
                     ParseFn parseArg, const polycpp::JsonValue& defaultValue = {});
@@ -381,7 +381,7 @@ public:
      * @param description Human-readable description.
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js#options
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& requiredOption(const std::string& flags, const std::string& description = "");
 
@@ -392,7 +392,7 @@ public:
      * @param defaultValue Default value.
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js#options
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& requiredOption(const std::string& flags, const std::string& description,
                             const polycpp::JsonValue& defaultValue);
@@ -405,7 +405,7 @@ public:
      * @param defaultValue Default value.
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js#options
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& requiredOption(const std::string& flags, const std::string& description,
                             ParseFn parseArg, const polycpp::JsonValue& defaultValue = {});
@@ -419,7 +419,7 @@ public:
      * @param option The Option to add.
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js#options
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& addOption(Option option);
 
@@ -429,7 +429,7 @@ public:
      * @param description Human-readable description.
      * @return New Option object.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual Option createOption(const std::string& flags, const std::string& description = "") const;
 
@@ -445,7 +445,7 @@ public:
      *   program.argument("<file>", "input file to process");
      * @endcode
      * @see https://github.com/tj/commander.js#more-configuration-2
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& argument(const std::string& name, const std::string& description = "");
 
@@ -458,7 +458,7 @@ public:
      *   program.arguments("<source> [destination]");
      * @endcode
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& arguments(const std::string& names);
 
@@ -467,7 +467,7 @@ public:
      * @param argument The Argument to add.
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& addArgument(Argument argument);
 
@@ -477,7 +477,7 @@ public:
      * @param description Human-readable description.
      * @return New Argument object.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual Argument createArgument(const std::string& name, const std::string& description = "") const;
 
@@ -501,7 +501,7 @@ public:
      *          .action([](auto&, auto&, auto&) {});
      * @endcode
      * @see https://github.com/tj/commander.js#commands
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& command(const std::string& nameAndArgs, const CommandOptions& opts = {});
 
@@ -523,7 +523,7 @@ public:
      *   program.executableCommand("build", "build the project", "my-builder");
      * @endcode
      * @see https://github.com/tj/commander.js#commands
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& executableCommand(const std::string& nameAndArgs,
                                const std::string& description,
@@ -534,7 +534,7 @@ public:
      * @param path The directory path.
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& executableDir(const std::string& path);
 
@@ -542,7 +542,7 @@ public:
      * @brief Get the directory to search for executable subcommands.
      * @return The executable directory path, or empty string if not set.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     std::string executableDir() const;
 
@@ -558,7 +558,7 @@ public:
      * @param opts Command options.
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& addCommand(Command cmd, const CommandOptions& opts = {});
 
@@ -571,7 +571,7 @@ public:
      * @param name Command name.
      * @return New Command handle.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual Command createCommand(const std::string& name = "") const;
 
@@ -591,7 +591,7 @@ public:
      *   });
      * @endcode
      * @see https://github.com/tj/commander.js#action-handler-subcommands
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& action(ActionFn fn);
 
@@ -610,7 +610,7 @@ public:
      *   });
      * @endcode
      * @see https://github.com/tj/commander.js#action-handler-subcommands
-     * @since 0.2.0
+     * @since 1.0.0
      */
     Command& actionAsync(AsyncActionFn fn);
 
@@ -631,7 +631,7 @@ public:
      *   program.parse({"--verbose", "file.txt"}, {.from = "user"});
      * @endcode
      * @see https://github.com/tj/commander.js#parse-and-parseasync
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& parse(const std::vector<std::string>& argv, const ParseOptions& parseOpts = {});
 
@@ -645,7 +645,7 @@ public:
      *
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js#parse-and-parseasync
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& parse();
 
@@ -665,7 +665,7 @@ public:
      *   polycpp::EventLoop::instance().run();
      * @endcode
      * @see https://github.com/tj/commander.js#parse-and-parseasync
-     * @since 0.2.0
+     * @since 1.0.0
      */
     polycpp::Promise<std::reference_wrapper<Command>> parseAsync(
         const std::vector<std::string>& argv,
@@ -680,7 +680,7 @@ public:
      * @param args The arguments to parse.
      * @return ParseOptionsResult with operands and unknown vectors.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     ParseOptionsResult parseOptions(const std::vector<std::string>& args);
 
@@ -695,7 +695,7 @@ public:
      *   bool verbose = opts["verbose"].asBool();
      * @endcode
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     OptionValues opts() const;
 
@@ -706,7 +706,7 @@ public:
      *
      * @return Merged option values map.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     OptionValues optsWithGlobals() const;
 
@@ -715,7 +715,7 @@ public:
      * @param key The option attribute name (camelCase).
      * @return The option value, or null JsonValue if not set.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     polycpp::JsonValue getOptionValue(const std::string& key) const;
 
@@ -725,7 +725,7 @@ public:
      * @param value The value to store.
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& setOptionValue(const std::string& key, const polycpp::JsonValue& value);
 
@@ -736,7 +736,7 @@ public:
      * @param source Where the value came from (default/cli/env/implied).
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& setOptionValueWithSource(const std::string& key, const polycpp::JsonValue& value,
                                        const std::string& source);
@@ -746,7 +746,7 @@ public:
      * @param key The option attribute name.
      * @return Source string, or empty if not set.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     std::string getOptionValueSource(const std::string& key) const;
 
@@ -755,7 +755,7 @@ public:
      * @param key The option attribute name.
      * @return Source string from this command or nearest ancestor.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     std::string getOptionValueSourceWithGlobals(const std::string& key) const;
 
@@ -770,7 +770,7 @@ public:
      * @param description Custom description.
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& helpOption(const std::string& flags, const std::string& description = "");
 
@@ -779,7 +779,7 @@ public:
      * @param enable false to disable, true to re-enable.
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& helpOption(bool enable);
 
@@ -798,7 +798,7 @@ public:
      *   program.helpCommand("assist [cmd]", "show help");
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& helpCommand(const std::string& nameAndArgs, const std::string& description = "");
 
@@ -816,7 +816,7 @@ public:
      *   program.helpCommand(true);  // force-add even without subcommands
      * @endcode
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& helpCommand(bool enable);
 
@@ -828,7 +828,7 @@ public:
      * @param cmd The custom help command handle (sinks by value).
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& addHelpCommand(Command cmd);
 
@@ -836,7 +836,7 @@ public:
      * @brief Output help information for this command.
      * @param context Help context (error: true for stderr).
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     void outputHelp(const HelpContext& context = {});
 
@@ -845,7 +845,7 @@ public:
      * @param context Help context.
      * @return The formatted help text.
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     std::string helpInformation(const HelpContext& context = {}) const;
 
@@ -853,7 +853,7 @@ public:
      * @brief Output help and exit.
      * @param context Help context (error: true for stderr, exit code 1).
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     void help(const HelpContext& context = {});
 
@@ -863,7 +863,7 @@ public:
      * @param text Text to add, or function returning text.
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& addHelpText(const std::string& position, const std::string& text);
 
@@ -875,7 +875,7 @@ public:
      * @param config Configuration map.
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& configureHelp(const std::map<std::string, polycpp::JsonValue>& config);
 
@@ -883,7 +883,7 @@ public:
      * @brief Get current help configuration.
      * @return Help configuration map.
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     std::map<std::string, polycpp::JsonValue> configureHelp() const;
 
@@ -892,7 +892,7 @@ public:
      * @param config Output configuration.
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& configureOutput(const OutputConfiguration& config);
 
@@ -900,7 +900,7 @@ public:
      * @brief Get current output configuration.
      * @return Output configuration.
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     OutputConfiguration configureOutput() const;
 
@@ -909,7 +909,7 @@ public:
      * @param displayHelp true to show help, or a custom message string.
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& showHelpAfterError(bool displayHelp = true);
 
@@ -918,7 +918,7 @@ public:
      * @param message Custom message to display after error.
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& showHelpAfterError(const std::string& message);
 
@@ -927,7 +927,7 @@ public:
      * @param displaySuggestion Whether to show suggestions.
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& showSuggestionAfterError(bool displaySuggestion = true);
 
@@ -938,7 +938,7 @@ public:
      * @param message The error message.
      * @param opts Error options (exitCode, code).
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     void error(const std::string& message, const ErrorOptions& opts = {});
 
@@ -954,7 +954,7 @@ public:
      *   program.exitOverride(); // throws instead of exiting
      * @endcode
      * @see https://github.com/tj/commander.js#override-exit-handling
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& exitOverride(std::function<void(const CommanderError&)> fn = {});
 
@@ -966,7 +966,7 @@ public:
      * @param listener Hook function.
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js#life-cycle-hooks
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& hook(const std::string& event, HookFn listener);
 
@@ -976,7 +976,7 @@ public:
      * @param listener Async hook function returning Promise<void>.
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js#life-cycle-hooks
-     * @since 0.2.0
+     * @since 1.0.0
      */
     Command& hookAsync(const std::string& event, AsyncHookFn listener);
 
@@ -987,7 +987,7 @@ public:
      * @param sourceCommand The source command to copy settings from.
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& copyInheritedSettings(const Command& sourceCommand);
 
@@ -996,7 +996,7 @@ public:
      * @param allowUnknown Whether to allow unknown options.
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& allowUnknownOption(bool allowUnknown = true);
 
@@ -1005,7 +1005,7 @@ public:
      * @param allowExcess Whether to allow excess arguments.
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& allowExcessArguments(bool allowExcess = true);
 
@@ -1014,7 +1014,7 @@ public:
      * @param positional Whether to enable positional options.
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& enablePositionalOptions(bool positional = true);
 
@@ -1023,7 +1023,7 @@ public:
      * @param passThrough Whether to pass through options.
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& passThroughOptions(bool passThrough = true);
 
@@ -1032,7 +1032,7 @@ public:
      * @param combine Whether to combine flag and optional value (default: true).
      * @return Reference to this command for chaining.
      * @see https://github.com/tj/commander.js
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Command& combineFlagAndOptionalValue(bool combine = true);
 
@@ -1040,7 +1040,7 @@ public:
      * @brief Create a Help instance with current help configuration applied.
      * @return Help object with configuration applied.
      * @see https://github.com/tj/commander.js#custom-help
-     * @since 0.1.0
+     * @since 1.0.0
      */
     virtual Help createHelp() const;
 
@@ -1054,49 +1054,49 @@ public:
      * subcommands are added.
      *
      * @return Const reference to the subcommand deque.
-     * @since 0.2.0
+     * @since 1.0.0
      */
     const std::deque<Command>& commands() const;
 
     /**
      * @brief Get the registered options (read-only).
      * @return Const reference to the option vector.
-     * @since 0.2.0
+     * @since 1.0.0
      */
     const std::vector<Option>& options() const;
 
     /**
      * @brief Get the registered arguments (read-only).
      * @return Const reference to the argument vector.
-     * @since 0.2.0
+     * @since 1.0.0
      */
     const std::vector<Argument>& registeredArguments() const;
 
     /**
      * @brief Get CLI args with options removed (raw strings after parse).
      * @return Const reference to the args vector.
-     * @since 0.2.0
+     * @since 1.0.0
      */
     const std::vector<std::string>& args() const;
 
     /**
      * @brief Get raw args as passed to parse().
      * @return Const reference to the raw args vector.
-     * @since 0.2.0
+     * @since 1.0.0
      */
     const std::vector<std::string>& rawArgs() const;
 
     /**
      * @brief Get processed args (after custom processing, collecting variadics).
      * @return Const reference to the processed-args vector.
-     * @since 0.2.0
+     * @since 1.0.0
      */
     const std::vector<polycpp::JsonValue>& processedArgs() const;
 
     /**
      * @brief Whether this command is hidden from help.
      * @return true if hidden.
-     * @since 0.2.0
+     * @since 1.0.0
      */
     bool hidden() const;
 
@@ -1122,7 +1122,7 @@ public:
      * @endcode
      *
      * @return The parent command handle, or `std::nullopt`.
-     * @since 0.2.0
+     * @since 1.0.0
      */
     std::optional<Command> parent() const;
 
@@ -1133,7 +1133,7 @@ public:
      * that avoids materializing the parent handle.
      *
      * @return true when a parent is registered and its Impl is still alive.
-     * @since 0.2.0
+     * @since 1.0.0
      */
     bool hasParent() const noexcept;
 
@@ -1142,34 +1142,34 @@ public:
     /**
      * @brief Report a missing required argument.
      * @param name The argument name.
-     * @since 0.1.0
+     * @since 1.0.0
      */
     void missingArgument(const std::string& name);
 
     /**
      * @brief Report a missing option argument.
      * @param option The option missing its argument.
-     * @since 0.1.0
+     * @since 1.0.0
      */
     void optionMissingArgument(const Option& option);
 
     /**
      * @brief Report a missing mandatory option value.
      * @param option The mandatory option.
-     * @since 0.1.0
+     * @since 1.0.0
      */
     void missingMandatoryOptionValue(const Option& option);
 
     /**
      * @brief Report an unknown option.
      * @param flag The unknown flag.
-     * @since 0.1.0
+     * @since 1.0.0
      */
     void unknownOption(const std::string& flag);
 
     /**
      * @brief Report an unknown command.
-     * @since 0.1.0
+     * @since 1.0.0
      */
     void unknownCommand();
 

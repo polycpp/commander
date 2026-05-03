@@ -3,7 +3,7 @@
 /**
  * @file detail/commander.hpp
  * @brief Inline implementations for module-level factory functions.
- * @since 0.1.0
+ * @since 1.0.0
  */
 
 #include <polycpp/commander/commander.hpp>

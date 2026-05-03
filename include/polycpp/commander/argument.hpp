@@ -4,7 +4,7 @@
  * @file argument.hpp
  * @brief Argument class for defining command arguments.
  * @see https://github.com/tj/commander.js#more-configuration-2
- * @since 0.1.0
+ * @since 1.0.0
  */
 
 #include <polycpp/core/json.hpp>
@@ -18,7 +18,7 @@ namespace polycpp {
 namespace commander {
 
 /// @brief Type alias for argument parsing callbacks.
-/// @since 0.1.0
+/// @since 1.0.0
 using ParseFn = std::function<polycpp::JsonValue(const std::string&, const polycpp::JsonValue&)>;
 
 /**
@@ -41,7 +41,7 @@ using ParseFn = std::function<polycpp::JsonValue(const std::string&, const polyc
  * @endcode
  *
  * @see https://github.com/tj/commander.js#more-configuration-2
- * @since 0.1.0
+ * @since 1.0.0
  */
 class Argument {
 public:
@@ -49,7 +49,7 @@ public:
      * @brief Construct an Argument by parsing a name specification.
      * @param name Argument name with optional angle/square brackets and variadic dots.
      * @param description Human-readable description for help output.
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Argument(const std::string& name, const std::string& description = "");
 
@@ -62,7 +62,7 @@ public:
      *   assert(arg.name() == "file");
      * @endcode
      * @see https://github.com/tj/commander.js#more-configuration-2
-     * @since 0.1.0
+     * @since 1.0.0
      */
     std::string name() const;
 
@@ -76,7 +76,7 @@ public:
      *   Argument arg("[color]").defaultValue(polycpp::JsonValue("blue"), "favorite color");
      * @endcode
      * @see https://github.com/tj/commander.js#more-configuration-2
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Argument& defaultValue(const polycpp::JsonValue& value, const std::string& description = "");
 
@@ -91,7 +91,7 @@ public:
      *   });
      * @endcode
      * @see https://github.com/tj/commander.js#custom-argument-processing
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Argument& argParser(ParseFn fn);
 
@@ -104,7 +104,7 @@ public:
      *   arg.choices({"small", "medium", "large"});
      * @endcode
      * @see https://github.com/tj/commander.js#more-configuration-2
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Argument& choices(const std::vector<std::string>& values);
 
@@ -112,7 +112,7 @@ public:
      * @brief Make argument required.
      * @return Reference to this Argument for chaining.
      * @see https://github.com/tj/commander.js#more-configuration-2
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Argument& argRequired();
 
@@ -120,7 +120,7 @@ public:
      * @brief Make argument optional.
      * @return Reference to this Argument for chaining.
      * @see https://github.com/tj/commander.js#more-configuration-2
-     * @since 0.1.0
+     * @since 1.0.0
      */
     Argument& argOptional();
 
@@ -146,7 +146,7 @@ private:
  *   assert(humanReadableArgName(arg) == "<file...>");
  * @endcode
  * @see https://github.com/tj/commander.js
- * @since 0.1.0
+ * @since 1.0.0
  */
 std::string humanReadableArgName(const Argument& arg);
 

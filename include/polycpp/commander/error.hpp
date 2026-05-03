@@ -4,7 +4,7 @@
  * @file error.hpp
  * @brief Error classes for polycpp commander.
  * @see https://github.com/tj/commander.js
- * @since 0.1.0
+ * @since 1.0.0
  */
 
 #include <polycpp/core/error.hpp>
@@ -25,7 +25,7 @@ namespace commander {
  * @endcode
  *
  * @see https://github.com/tj/commander.js#custom-error-handling
- * @since 0.1.0
+ * @since 1.0.0
  */
 class CommanderError : public polycpp::Error {
 public:
@@ -53,7 +53,7 @@ public:
  * @endcode
  *
  * @see https://github.com/tj/commander.js#custom-argument-processing
- * @since 0.1.0
+ * @since 1.0.0
  */
 class InvalidArgumentError : public CommanderError {
 public:
