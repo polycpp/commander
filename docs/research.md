@@ -309,10 +309,12 @@ Decisions:
 - crypto, compression, TLS, network, and HTTP APIs: not applicable — none
   appear upstream.
 - unsupported Node-specific APIs and audit reason: `process.defaultApp`
-  (Electron-specific, used only to skip `argv[0]` for Electron bundles) is
-  detected at runtime when `polycpp::process::env("ELECTRON_RUN_AS_NODE")`
-  or equivalent is observable; otherwise the Electron "from" mode is the
-  caller's responsibility (`parse(argv, {.from = "electron"})`).
+  (Electron-specific, used only to skip `argv[0]` for Electron bundles)
+  is intentionally not supported — Electron is not a polycpp runtime
+  target, so runtime-detecting it has no purpose. The
+  `parse(argv, {.from = "electron"})` mode is kept only as a thin
+  behavioral alias for callers who do their own external Electron
+  detection.
 
 ## External SDK and native driver strategy
 

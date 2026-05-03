@@ -6,11 +6,6 @@
   flags to allocate distinct ports for parent and child executable
   subcommands. This is Node-runtime specific and is not implemented in the
   C++ port.
-- **Electron auto-detection of `argv[0]`.** Upstream inspects
-  `process.defaultApp` to decide whether to skip the first element of
-  `argv`. The port replaces this with an explicit
-  `parse(argv, {.from = "electron"})` opt-in. Auto-detection can be added
-  later by reading `polycpp::process::env("ELECTRON_RUN_AS_NODE")`.
 ## Deliberate Behavior Changes
 
 - **Sync vs. async action and hook overloads are separate methods.**
@@ -41,6 +36,16 @@
   for subclass customization.
 - **Node-specific globals** (`global`, `globalThis`, `require.main`) are
   not exposed.
+- **Electron auto-detection of `argv[0]` is not supported.** Upstream
+  commander.js inspects `process.defaultApp` to decide whether to skip
+  the first element of `argv` when running inside an Electron bundle.
+  Electron is not a supported runtime for polycpp, so detecting it has
+  no purpose in this port. The `parse(argv, {.from = "electron"})`
+  parse mode is retained as a thin behavioral alias for callers who
+  do their own external Electron detection (it skips the first 2
+  argv entries, identical to `from = "node"`); no new code is needed
+  in commander to ship an Electron-aware experience because polycpp
+  itself does not target Electron.
 - **Legacy `command:<name>` and `command:*` event listeners are not
   exposed.** Upstream commander.js inherited these from its
   `events.EventEmitter` base; new code is encouraged to use

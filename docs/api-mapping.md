@@ -98,7 +98,7 @@
 | Windows `.exe` / `.cmd` / `.bat` executable lookup | native path helpers in `Command::executeSubCommand_` / `findProgram_` | adapted | Uses Windows path separators, semicolon-delimited `PATH`, PATHEXT candidate expansion, and `COMSPEC`/`cmd.exe /d /s /c` for command shims. |
 | `node --inspect` argv rewriting | (none) | deferred | Node-runtime specific; recorded in Divergences. |
 | `Error.captureStackTrace` | (none) | omitted | Node-specific stack-capture hook, not meaningful in C++. |
-| `process.defaultApp` (Electron) | `parse(argv, {.from = "electron"})` opt-in | adapted | Caller selects "electron" mode explicitly; runtime detection of Electron is out of scope. |
+| `process.defaultApp` (Electron) | `parse(argv, {.from = "electron"})` opt-in | omitted | Electron is not a polycpp-supported runtime, so auto-detecting it has no purpose. The `from = "electron"` mode is retained as a thin alias for callers doing their own external Electron detection. |
 
 ## TypeScript Declaration Review
 
@@ -168,7 +168,9 @@
 - Crypto, compression, TLS, network, and HTTP APIs: not applicable.
 - Unsupported or non-meaningful Node-specific APIs and audit reason: `Error.captureStackTrace`, automatic Electron detection via `process.defaultApp`, and `node --inspect` argv splitting (the last is deferred, the first two are intentionally not preserved). Details:
   - `Error.captureStackTrace` — Node-only stack hook, no C++ equivalent.
-  - `process.defaultApp` automatic Electron detection — replaced by
-    explicit `parse(argv, {.from = "electron"})`.
+  - `process.defaultApp` automatic Electron detection — Electron is
+    not a polycpp-supported runtime, so this is intentionally not
+    preserved. The `from = "electron"` mode is retained as a thin
+    alias for callers doing their own external Electron detection.
   - `node --inspect` argv splitting in stand-alone executable subcommand
     resolution — deferred.
