@@ -14,6 +14,10 @@ subcommand.
 **Prerequisites:** a working ``polycpp::commander`` install — see
 :doc:`../getting-started/installation`.
 
+This tutorial focuses on commander wiring. The storage layer is sketched as a
+``tasks::`` namespace so the CLI flow stays readable; for a fully runnable
+program, see :doc:`../examples/todo`.
+
 Step 1 — sketch the root command
 --------------------------------
 
@@ -23,26 +27,22 @@ version — the latter registers ``-V, --version`` for free:
 
 .. code-block:: cpp
 
+   using namespace polycpp::commander;
+
    auto& prog = polycpp::commander::program();
    prog.name("todo")
        .description("a tiny task tracker")
        .version("0.1.0")
        .showSuggestionAfterError(true);
 
-   prog.option("-v, --verbose", "log every action")
-       .option("-f, --file <path>", "task database path",
-               polycpp::JsonValue("tasks.json"))
-       .option("--color", "colorize output (auto when TTY)");
-
-Hook the global ``--file`` to an environment variable so the user can
-skip the flag once they've set ``TODO_FILE=...``:
-
-.. code-block:: cpp
-
-   using namespace polycpp::commander;
    Option fileOpt("-f, --file <path>", "task database path");
    fileOpt.defaultValue(polycpp::JsonValue("tasks.json")).env("TODO_FILE");
-   prog.addOption(std::move(fileOpt));
+   prog.addOption(std::move(fileOpt))
+       .option("-v, --verbose", "log every action")
+       .option("--color", "colorize output (auto when TTY)");
+
+The root ``--file`` now has three sources, in priority order: the command
+line, ``TODO_FILE`` from the environment, or the ``tasks.json`` default.
 
 Step 2 — add ``add``, ``list``, and ``done`` subcommands
 --------------------------------------------------------
@@ -54,13 +54,18 @@ to the *new* subcommand — chain ``.description()``, ``.argument()``,
 
 .. code-block:: cpp
 
+   auto parseInt = [](const std::string& s, const polycpp::JsonValue&) {
+       return polycpp::JsonValue(std::stoi(s));
+   };
+
    prog.command("add <title>")
        .description("add a new task")
        .option("-p, --priority <n>", "1 = high, 3 = low",
-               polycpp::JsonValue(2))
+               parseInt, polycpp::JsonValue(2))
        .action([&](const auto& args, const auto& opts, auto& cmd) {
            auto parentOpts = cmd.optsWithGlobals();
-           if (parentOpts["verbose"].asBool()) std::cerr << "[add]\n";
+           const auto verbose = parentOpts["verbose"];
+           if (verbose.isBool() && verbose.asBool()) std::cerr << "[add]\n";
            tasks::create(args[0].asString(), opts["priority"].asInt());
        });
 
@@ -68,21 +73,26 @@ to the *new* subcommand — chain ``.description()``, ``.argument()``,
        .description("list tasks (newest first)")
        .option("--done", "show completed tasks")
        .action([&](const auto&, const auto& opts, auto& cmd) {
+           const auto done = opts["done"];
+           const bool showDone = done.isBool() && done.asBool();
            for (auto& t : tasks::all(cmd.optsWithGlobals()["file"].asString()))
-               if (t.done == opts["done"].asBool())
+               if (t.done == showDone)
                    std::cout << t.id << "  " << t.title << '\n';
        });
 
    prog.command("done <id>")
        .description("mark a task done")
        .action([&](const auto& args, const auto&, auto&) {
-           tasks::complete(args[0].asInt());
+           tasks::complete(std::stoi(args[0].asString()));
        });
 
 The inner lambda calls :cpp:func:`optsWithGlobals()
 <polycpp::commander::Command::optsWithGlobals>` to read the root
 command's ``--verbose`` and ``--file`` without plumbing them through
 every subcommand.
+
+Note that ``tasks::create`` / ``tasks::all`` / ``tasks::complete`` are your
+application code, not part of commander itself.
 
 Step 3 — run the parser and print help on error
 -----------------------------------------------

@@ -18,7 +18,7 @@ if(POLYCPP_SOURCE_DIR AND EXISTS "${POLYCPP_SOURCE_DIR}/CMakeLists.txt")
 else()
     FetchContent_Declare(
         polycpp
-        GIT_REPOSITORY git@github.com:enricohuang/polycpp.git
+        GIT_REPOSITORY https://github.com/enricohuang/polycpp.git
         GIT_TAG        master
         GIT_SHALLOW    TRUE
     )

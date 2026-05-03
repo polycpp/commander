@@ -27,7 +27,7 @@ extensions = [
 ]
 
 # Doxygen XML lives next to this conf.py in build/doxygen/xml.
-# build.sh creates it before invoking sphinx-build.
+# docs/build.py creates it before invoking sphinx-build.
 breathe_projects = {
     project: str(_HERE.parent / 'build' / 'doxygen' / 'xml'),
 }

@@ -14,6 +14,6 @@ Build and run:
 .. code-block:: bash
 
    cmake -B build -G Ninja -DPOLYCPP_COMMANDER_BUILD_EXAMPLES=ON
-   cmake --build build --target greet
+   cmake --build build --target polycpp_commander_example_greet
    ./build/examples/greet --lang es --shout world
    # HOLA, WORLD

@@ -7,8 +7,14 @@ on:
       - 'docs/**'
       - 'include/**'
       - 'src/**'
+      - 'examples/**'
+      - 'CMakeLists.txt'
+      - 'VERSION.txt'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 permissions:
   contents: read
@@ -40,7 +46,7 @@ jobs:
         run: pip install -r docs/requirements.txt
 
       - name: Build documentation
-        run: python3 docs/build.py
+        run: python3 -u docs/build.py
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

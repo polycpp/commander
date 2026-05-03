@@ -35,7 +35,8 @@ from a ``preSubcommand`` hook:
 .. code-block:: cpp
 
    prog.hook("preSubcommand", [](auto& self, auto&) {
-       if (self.optsWithGlobals()["verbose"].asBool())
+       const auto verbose = self.optsWithGlobals()["verbose"];
+       if (verbose.isBool() && verbose.asBool())
            polycpp::process::env().set("MY_APP_VERBOSE", "1");
    });
 

@@ -1,34 +1,55 @@
 Installation
 ============
 
-commander targets C++20 and builds with clang ≥ 14 or gcc ≥ 11. It depends
-only on the base `polycpp <https://github.com/enricohuang/polycpp>`_ library
-(and none).
+commander targets C++20 and depends only on the base
+`polycpp <https://github.com/enricohuang/polycpp>`_ library.
 
-CMake FetchContent (recommended)
---------------------------------
+Tested toolchain matrix for ``v1.0.0``:
 
-Add the library to your ``CMakeLists.txt``:
+- GCC 13+
+- Clang 16+
+- MSVC 19.44+
+- CMake 3.20+
+
+Use from a new project (recommended)
+------------------------------------
+
+Start with a minimal ``CMakeLists.txt``:
 
 .. code-block:: cmake
+
+   cmake_minimum_required(VERSION 3.20)
+   project(my_app LANGUAGES CXX)
+   set(CMAKE_CXX_STANDARD 20)
+   set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
    include(FetchContent)
 
    FetchContent_Declare(
        polycpp_commander
        GIT_REPOSITORY https://github.com/polycpp/commander.git
-       GIT_TAG        master
+       GIT_TAG        v1.0.0
    )
    FetchContent_MakeAvailable(polycpp_commander)
 
    add_executable(my_app main.cpp)
    target_link_libraries(my_app PRIVATE polycpp::commander)
 
-The first configure pulls ``polycpp`` transitively, so the build tree may be
-large. Pin ``GIT_TAG`` to a specific commit for reproducible builds.
+``polycpp_commander`` fetches ``polycpp`` transitively over HTTPS, so a clean
+GitHub checkout works without preconfigured SSH keys.
 
-Using a local clone
--------------------
+Build it the usual way:
+
+.. code-block:: bash
+
+   cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+   cmake --build build
+
+Use :doc:`quickstart` if you want a copy-paste ``main.cpp`` to go with this
+setup.
+
+Use local clones during development
+-----------------------------------
 
 If you already have commander and polycpp checked out side by side, tell
 CMake to use them instead of fetching from GitHub:
@@ -39,7 +60,14 @@ CMake to use them instead of fetching from GitHub:
        -DFETCHCONTENT_SOURCE_DIR_POLYCPP=/path/to/polycpp \
        -DFETCHCONTENT_SOURCE_DIR_POLYCPP_COMMANDER=/path/to/commander
 
-This is the path CI uses for the test suite — see ``tests/`` in the repo.
+If you are building the commander repository itself, use the repo-local switch
+instead:
+
+.. code-block:: bash
+
+   cmake -S . -B build -G Ninja -DPOLYCPP_SOURCE_DIR=/path/to/polycpp
+
+That is the path the repository uses for its own test suite.
 
 Build options
 -------------
@@ -63,7 +91,7 @@ Verifying the install
 
 .. code-block:: bash
 
-   cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+   cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
    cmake --build build
    ctest --test-dir build --output-on-failure
 

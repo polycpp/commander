@@ -3,11 +3,17 @@ commander
 
 **Command-line option parser for polycpp**
 
-Define options, arguments, subcommands, action handlers, and lifecycle hooks with the same fluent API as the npm commander package. Includes help formatting, "did you mean?" suggestions, environment-variable binding, custom parsers, and Promise-based async actions on top of polycpp's event loop.
+Build command-line interfaces with the same fluent API as the npm
+``commander`` package, but in modern C++. The library covers options,
+arguments, subcommands, help formatting, environment-variable binding,
+custom parsers, "did you mean?" suggestions, and Promise-based async
+actions on top of polycpp's event loop.
 
 .. code-block:: cpp
 
+   #include <cctype>
    #include <iostream>
+   #include <string>
    #include <polycpp/commander/commander.hpp>
    #include <polycpp/process.hpp>
 
@@ -22,12 +28,15 @@ Define options, arguments, subcommands, action handlers, and lifecycle hooks wit
            .argument("<name>", "who to greet")
            .action([](const auto& args, const auto& opts, auto&) {
                std::string msg = "hello, " + args[0].asString();
-               if (opts["shout"].asBool())
-                   for (auto& c : msg) c = std::toupper(static_cast<unsigned char>(c));
+               const auto shout = opts["shout"];
+               if (shout.isBool() && shout.asBool())
+                   for (auto& c : msg)
+                       c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
                std::cout << msg << '\n';
            });
 
        prog.parse();
+       return 0;
    }
 
 .. grid:: 2
@@ -40,10 +49,10 @@ Define options, arguments, subcommands, action handlers, and lifecycle hooks wit
    .. grid-item-card:: C++20 native
       :margin: 1
 
-      Header-only declarations with inline implementations, builds on
-      ``polycpp::events::EventEmitter``, ``polycpp::JsonValue``, and
-      ``polycpp::Promise`` so it composes naturally with the rest of the
-      polycpp ecosystem.
+      Mostly inline public headers with a small library target
+      (``polycpp::commander``). It builds on ``polycpp::events::EventEmitter``,
+      ``polycpp::JsonValue``, and ``polycpp::Promise`` so it composes naturally
+      with the rest of the polycpp ecosystem.
 
    .. grid-item-card:: Tested
       :margin: 1
@@ -59,18 +68,39 @@ Define options, arguments, subcommands, action handlers, and lifecycle hooks wit
 Getting started
 ---------------
 
-.. code-block:: bash
+.. code-block:: cmake
 
-   # With FetchContent (recommended)
+   cmake_minimum_required(VERSION 3.20)
+   project(my_app LANGUAGES CXX)
+   set(CMAKE_CXX_STANDARD 20)
+   set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+   include(FetchContent)
    FetchContent_Declare(
        polycpp_commander
        GIT_REPOSITORY https://github.com/polycpp/commander.git
-       GIT_TAG        master
+       GIT_TAG        v1.0.0
    )
    FetchContent_MakeAvailable(polycpp_commander)
+
+   add_executable(my_app main.cpp)
    target_link_libraries(my_app PRIVATE polycpp::commander)
 
-:doc:`Installation <getting-started/installation>` · :doc:`Quickstart <getting-started/quickstart>` · :doc:`Tutorials <tutorials/index>` · :doc:`API reference <api/index>`
+Choose your path
+----------------
+
+- :doc:`Installation <getting-started/installation>`: compiler support, the
+  recommended FetchContent setup, local-clone workflows, and build options.
+- :doc:`Quickstart <getting-started/quickstart>`: the smallest runnable CLI you
+  can build from an empty directory.
+- :doc:`Core concepts <getting-started/core-concepts>`: how command ownership,
+  ``JsonValue`` option storage, parsing modes, and error handling fit together.
+- :doc:`Tutorials <tutorials/index>`: longer walkthroughs for multi-command
+  CLIs, async actions, and help customization.
+- :doc:`How-to guides <guides/index>`: short answers for one specific problem.
+- :doc:`Examples <examples/index>`: runnable programs pulled directly from the
+  repository.
+- :doc:`API reference <api/index>`: the full public surface from the headers.
 
 .. toctree::
    :hidden:
@@ -78,6 +108,7 @@ Getting started
 
    getting-started/installation
    getting-started/quickstart
+   getting-started/core-concepts
 
 .. toctree::
    :hidden:

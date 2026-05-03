@@ -58,7 +58,7 @@ the event loop:
                std::cout << co_await res.text();
            });
 
-       auto fut = prog.parseAsync(polycpp::process::argv(), {.from = "node"});
+       auto fut = prog.parseAsync(polycpp::process::argv(), {.from = "native"});
        polycpp::EventLoop::instance().run();
        return 0;
    }

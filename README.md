@@ -79,10 +79,27 @@ prog.version("1.0.0").parse();
 
 ## Documentation
 
-See the [docs site](docs/sphinx/index.rst) for the API reference, tutorials,
-and examples. Build it locally with `python3 docs/build.py`.
+Read the public docs at https://polycpp.github.io/commander/ for the
+installation guide, quickstart, tutorials, API reference, and runnable
+examples. If GitHub Pages is still catching up, the source lives under
+[`docs/sphinx/`](docs/sphinx/) and you can build it locally with the
+commands below.
 
-Planning artifacts under `docs/`: [research.md](docs/research.md),
+## Build docs locally
+
+Make sure `doxygen` is installed and on `PATH`, then install the Python
+doc toolchain and build the site:
+
+```bash
+python3 -m pip install -r docs/requirements.txt
+python3 docs/build.py
+```
+
+This writes the HTML site to `docs/build/html/`.
+
+## Development notes
+
+Porting and validation notes live under `docs/`: [research.md](docs/research.md),
 [dependency-analysis.md](docs/dependency-analysis.md),
 [api-mapping.md](docs/api-mapping.md), [divergences.md](docs/divergences.md),
 [test-plan.md](docs/test-plan.md), [port-checklist.md](docs/port-checklist.md).

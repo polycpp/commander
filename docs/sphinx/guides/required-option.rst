@@ -24,8 +24,8 @@ A required option can still have a default value — a default turns
 
    using namespace polycpp::commander;
    Option cfg("--config <path>", "configuration file");
-   cfg.env("APP_CONFIG");
-   prog.addOption(std::move(cfg)).requiredOption("--config <path>", "configuration file");
+   cfg.env("APP_CONFIG").makeOptionMandatory();
+   prog.addOption(std::move(cfg));
 
 If you just want to validate the value itself, use ``argParser`` plus
 :cpp:class:`InvalidArgumentError

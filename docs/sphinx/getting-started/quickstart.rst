@@ -1,20 +1,42 @@
 Quickstart
 ==========
 
-This page walks through a minimal commander program end-to-end. Copy the
-snippet, run it, then jump to :doc:`../tutorials/index` for task-oriented
-walkthroughs or :doc:`../api/index` for the full reference.
+This page builds a minimal commander program from an empty directory.
+Create two files, run the commands exactly as shown, then jump to
+:doc:`core-concepts` for the mental model or :doc:`../tutorials/index`
+for task-oriented walkthroughs.
 
 We'll wire up a tiny ``serve`` CLI with one flag, one value-bearing
-option, one positional argument, and a default value — enough to hit
-every part of the parser.
+option, one positional argument, and defaults for both values.
 
-Full example
-------------
+Create ``CMakeLists.txt``
+-------------------------
+
+.. code-block:: cmake
+
+   cmake_minimum_required(VERSION 3.20)
+   project(serve_demo LANGUAGES CXX)
+   set(CMAKE_CXX_STANDARD 20)
+   set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+   include(FetchContent)
+   FetchContent_Declare(
+       polycpp_commander
+       GIT_REPOSITORY https://github.com/polycpp/commander.git
+       GIT_TAG        v1.0.0
+   )
+   FetchContent_MakeAvailable(polycpp_commander)
+
+   add_executable(serve_demo main.cpp)
+   target_link_libraries(serve_demo PRIVATE polycpp::commander)
+
+Create ``main.cpp``
+-------------------
 
 .. code-block:: cpp
 
    #include <iostream>
+   #include <string>
    #include <polycpp/commander/commander.hpp>
    #include <polycpp/process.hpp>
 
@@ -27,26 +49,33 @@ Full example
            .version("1.0.0");
 
        prog.option("-v, --verbose", "log every request")
-           .option("-p, --port <number>", "port to listen on", polycpp::JsonValue(8080))
-           .argument("[dir]", "directory to serve", polycpp::JsonValue("."));
+           .option("-p, --port <port>", "port to listen on",
+                   polycpp::JsonValue(std::string("8080")))
+           .argument("[dir]", "directory to serve",
+                     polycpp::JsonValue(std::string(".")));
 
        prog.action([](const auto& args, const auto& opts, auto&) {
+           const auto verbose = opts["verbose"];
+           const bool isVerbose = verbose.isBool() && verbose.asBool();
            std::cout << "serving " << args[0].asString()
-                     << " on port " << opts["port"].asInt()
-                     << (opts["verbose"].asBool() ? " (verbose)" : "")
+                     << " on port " << opts["port"].asString()
+                     << (isVerbose ? " (verbose)" : "")
                      << '\n';
        });
 
        prog.parse();
+       return 0;
    }
 
-Compile it with the same CMake wiring from :doc:`installation`:
+Build and run
+-------------
 
 .. code-block:: bash
 
-   cmake -B build -G Ninja
+   cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
    cmake --build build
-   ./build/my_app -v --port 3000 ./public
+   ./build/serve_demo -v --port 3000 ./public
+   ./build/serve_demo --help
 
 Expected output:
 
@@ -67,8 +96,8 @@ What just happened
    :cpp:func:`polycpp::commander::createCommand` if you prefer to own
    the instance yourself.
 
-3. ``.option("-p, --port <number>", ...)`` declares a value-bearing
-   option; ``<number>`` means the value is required when the flag is
+3. ``.option("-p, --port <port>", ...)`` declares a value-bearing
+   option; ``<port>`` means the value is required when the flag is
    used. ``[number]`` would make it optional, ``<numbers...>`` variadic,
    and ``--no-verbose`` would flip a boolean.
 
@@ -81,9 +110,14 @@ What just happened
    ``polycpp::JsonValue`` keyed by camelCased attribute name
    (``--dry-run`` becomes ``opts["dryRun"]``).
 
+6. This quickstart keeps ``--port`` as a string to stay copy-paste simple.
+   If you want integer validation, add an ``argParser`` as shown in
+   :doc:`../guides/parse-numeric-option`.
+
 Next steps
 ----------
 
+- :doc:`core-concepts` — ownership, parsing modes, ``JsonValue``, and exits.
 - :doc:`../tutorials/index` — step-by-step walkthroughs of common tasks.
 - :doc:`../guides/index` — short how-tos for specific problems.
 - :doc:`../api/index` — every public type, function, and option.

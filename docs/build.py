@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 def run(cmd: list[str], cwd: Path) -> None:
-    print(f"==> {' '.join(cmd)}")
+    print(f"==> {' '.join(cmd)}", flush=True)
     subprocess.run(cmd, cwd=cwd, check=True)
 
 
