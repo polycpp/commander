@@ -45,3 +45,7 @@ _deps/
 CLAUDE.md
 AGENTS.md
 .claude/
+
+# Python bytecode caches (Sphinx extension dir)
+__pycache__/
+*.pyc
